@@ -119,6 +119,7 @@ type Platform struct {
 	respondToAtEveryoneAndHere bool
 	shareSessionInChannel bool
 	threadIsolation       bool
+	mentionPatterns []*regexp.Regexp
 	// noReplyToTrigger: when true, send via Create instead of Im.Message.Reply (no quote to the user's message).
 	noReplyToTrigger bool
 	client           *lark.Client
@@ -187,6 +188,21 @@ func newPlatform(name, domain string, opts map[string]any) (core.Platform, error
 		noReplyToTrigger = true
 	}
 
+	var mentionPatterns []*regexp.Regexp
+	if raw, ok := opts["mention_patterns"].(string); ok && raw != "" {
+		for _, pat := range strings.Split(raw, ",") {
+			pat = strings.TrimSpace(pat)
+			if pat == "" {
+				continue
+			}
+			re, err := regexp.Compile("(?i)" + pat)
+			if err != nil {
+				return nil, fmt.Errorf("%s: invalid mention_patterns regex %q: %w", name, pat, err)
+			}
+			mentionPatterns = append(mentionPatterns, re)
+		}
+	}
+
 	progressStyle := "legacy"
 	if v, ok := opts["progress_style"].(string); ok {
 		switch strings.ToLower(strings.TrimSpace(v)) {
@@ -232,6 +248,7 @@ func newPlatform(name, domain string, opts map[string]any) (core.Platform, error
 		respondToAtEveryoneAndHere: respondToAtEveryoneAndHere,
 		shareSessionInChannel: shareSessionInChannel,
 		threadIsolation:       threadIsolation,
+		mentionPatterns:       mentionPatterns,
 		noReplyToTrigger:      noReplyToTrigger,
 		client:                lark.NewClient(appID, appSecret, clientOpts...),
 		replayClient:          newFeishuReplayClient(appID, appSecret, domain),
@@ -679,7 +696,12 @@ func (p *Platform) onMessage(event *larkim.P2MessageReceiveV1) error {
 	)
 
 	if chatType == "group" && !p.groupReplyAll && p.botOpenID != "" {
-		if !isBotMentioned(msg.Mentions, p.botOpenID) {
+		contentForMatch := ""
+		if msg.Content != nil {
+			contentForMatch = *msg.Content
+		}
+		patternMatched := matchMentionPatterns(contentForMatch, p.mentionPatterns)
+		if !isBotMentioned(msg.Mentions, p.botOpenID) && !patternMatched {
 			// Feishu @all sends {"text":"@_all"} with 0 mentions.
 			if p.respondToAtEveryoneAndHere && msg.Content != nil && strings.Contains(*msg.Content, "@_all") {
 				slog.Debug(p.tag()+": responding to @all message", "chat_id", chatID)
@@ -1660,6 +1682,15 @@ func (p *Platform) fetchBotOpenID() (string, error) {
 		return "", fmt.Errorf("api code=%d", result.Code)
 	}
 	return result.Bot.OpenID, nil
+}
+
+func matchMentionPatterns(text string, patterns []*regexp.Regexp) bool {
+	for _, re := range patterns {
+		if re.MatchString(text) {
+			return true
+		}
+	}
+	return false
 }
 
 func isBotMentioned(mentions []*larkim.MentionEvent, botOpenID string) bool {

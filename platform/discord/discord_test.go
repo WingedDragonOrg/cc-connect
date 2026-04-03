@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"reflect"
+	"regexp"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -816,5 +817,67 @@ func TestReplyContextForDeferredInteractionFallback(t *testing.T) {
 				t.Fatalf("got %+v want %+v", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestMatchMentionPatterns(t *testing.T) {
+	patterns := []*regexp.Regexp{
+		regexp.MustCompile("(?i)小助手"),
+		regexp.MustCompile(`(?i)hey\s+bot`),
+	}
+
+	tests := []struct {
+		text string
+		want bool
+	}{
+		{"小助手 帮我看看代码", true},
+		{"hey bot fix this", true},
+		{"Hey   Bot fix this", true},
+		{"hello world", false},
+		{"", false},
+	}
+	for _, tt := range tests {
+		if got := matchMentionPatterns(tt.text, patterns); got != tt.want {
+			t.Errorf("matchMentionPatterns(%q) = %v, want %v", tt.text, got, tt.want)
+		}
+	}
+
+	// nil patterns should never match
+	if matchMentionPatterns("anything", nil) {
+		t.Error("nil patterns should return false")
+	}
+}
+
+func TestStripMentionPatterns(t *testing.T) {
+	patterns := []*regexp.Regexp{
+		regexp.MustCompile("(?i)小助手"),
+	}
+	got := stripMentionPatterns("小助手 帮我看看代码", patterns)
+	if got != "帮我看看代码" {
+		t.Errorf("stripMentionPatterns = %q, want %q", got, "帮我看看代码")
+	}
+}
+
+func TestNewPlatformMentionPatterns(t *testing.T) {
+	// Valid patterns
+	p, err := New(map[string]any{
+		"token":            "test-token",
+		"mention_patterns": "小助手,hey\\s+bot",
+	})
+	if err != nil {
+		t.Fatalf("New() error: %v", err)
+	}
+	plat := p.(*Platform)
+	if len(plat.mentionPatterns) != 2 {
+		t.Fatalf("got %d patterns, want 2", len(plat.mentionPatterns))
+	}
+
+	// Invalid regex
+	_, err = New(map[string]any{
+		"token":            "test-token",
+		"mention_patterns": "[invalid",
+	})
+	if err == nil {
+		t.Fatal("expected error for invalid regex")
 	}
 }

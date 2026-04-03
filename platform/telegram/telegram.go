@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -110,6 +111,7 @@ type Platform struct {
 	groupReplyAll         bool
 	shareSessionInChannel bool
 	enableReactions       bool
+	mentionPatterns       []*regexp.Regexp
 	httpClient            *http.Client
 
 	mu                  sync.RWMutex
@@ -160,7 +162,23 @@ func New(opts map[string]any) (core.Platform, error) {
 	groupReplyAll, _ := opts["group_reply_all"].(bool)
 	shareSessionInChannel, _ := opts["share_session_in_channel"].(bool)
 	enableReactions, _ := opts["enable_reactions"].(bool)
-	return &Platform{token: token, allowFrom: allowFrom, groupReplyAll: groupReplyAll, shareSessionInChannel: shareSessionInChannel, enableReactions: enableReactions, httpClient: httpClient}, nil
+
+	var mentionPatterns []*regexp.Regexp
+	if raw, ok := opts["mention_patterns"].(string); ok && raw != "" {
+		for _, pat := range strings.Split(raw, ",") {
+			pat = strings.TrimSpace(pat)
+			if pat == "" {
+				continue
+			}
+			re, err := regexp.Compile("(?i)" + pat)
+			if err != nil {
+				return nil, fmt.Errorf("telegram: invalid mention_patterns regex %q: %w", pat, err)
+			}
+			mentionPatterns = append(mentionPatterns, re)
+		}
+	}
+
+	return &Platform{token: token, allowFrom: allowFrom, groupReplyAll: groupReplyAll, shareSessionInChannel: shareSessionInChannel, enableReactions: enableReactions, mentionPatterns: mentionPatterns, httpClient: httpClient}, nil
 }
 
 func (p *Platform) Name() string { return "telegram" }
@@ -352,8 +370,12 @@ func (p *Platform) handleMessage(ctx context.Context, msg *models.Message) {
 
 	if isGroup && !p.groupReplyAll {
 		slog.Debug("telegram: checking group message", "text", msg.Text, "is_command", isCommand(msg))
-		if !p.isDirectedAtBot(msg) {
+		patternMatched := matchMentionPatterns(msg.Text, p.mentionPatterns)
+		if !p.isDirectedAtBot(msg) && !patternMatched {
 			return
+		}
+		if patternMatched {
+			msg.Text = stripMentionPatterns(msg.Text, p.mentionPatterns)
 		}
 	}
 
@@ -523,6 +545,22 @@ func buildChannelKey(chatID int64, threadID int) string {
 		return fmt.Sprintf("%d:%d", chatID, threadID)
 	}
 	return strconv.FormatInt(chatID, 10)
+}
+
+func matchMentionPatterns(text string, patterns []*regexp.Regexp) bool {
+	for _, re := range patterns {
+		if re.MatchString(text) {
+			return true
+		}
+	}
+	return false
+}
+
+func stripMentionPatterns(text string, patterns []*regexp.Regexp) string {
+	for _, re := range patterns {
+		text = re.ReplaceAllString(text, "")
+	}
+	return strings.TrimSpace(text)
 }
 
 func stripBotMention(text, botName string) string {

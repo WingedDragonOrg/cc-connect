@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -48,6 +49,7 @@ type Platform struct {
 	shareSessionInChannel      bool
 	threadIsolation            bool
 	respondToAtEveryoneAndHere bool
+	mentionPatterns            []*regexp.Regexp
 	proxyURL                   *url.URL
 	session                    *discordgo.Session
 	handler                    core.MessageHandler
@@ -73,6 +75,21 @@ func New(opts map[string]any) (core.Platform, error) {
 	threadIsolation, _ := opts["thread_isolation"].(bool)
 	respondToAtEveryoneAndHere, _ := opts["respond_to_at_everyone_and_here"].(bool)
 
+	var mentionPatterns []*regexp.Regexp
+	if raw, ok := opts["mention_patterns"].(string); ok && raw != "" {
+		for _, pat := range strings.Split(raw, ",") {
+			pat = strings.TrimSpace(pat)
+			if pat == "" {
+				continue
+			}
+			re, err := regexp.Compile("(?i)" + pat)
+			if err != nil {
+				return nil, fmt.Errorf("discord: invalid mention_patterns regex %q: %w", pat, err)
+			}
+			mentionPatterns = append(mentionPatterns, re)
+		}
+	}
+
 	var proxyU *url.URL
 	if proxyStr, _ := opts["proxy"].(string); proxyStr != "" {
 		u, err := url.Parse(proxyStr)
@@ -95,6 +112,7 @@ func New(opts map[string]any) (core.Platform, error) {
 		readyCh:                    make(chan struct{}),
 		threadIsolation:            threadIsolation,
 		respondToAtEveryoneAndHere: respondToAtEveryoneAndHere,
+		mentionPatterns:            mentionPatterns,
 		proxyURL:                   proxyU,
 	}, nil
 }
@@ -469,13 +487,18 @@ func (p *Platform) Start(handler core.MessageHandler) error {
 			botRoleID = p.botRoleIDForGuild(m.GuildID)
 		}
 		if m.GuildID != "" && !p.groupReplyAll {
-			if !isDiscordBotMention(m, p.botID, botRoleID, p.respondToAtEveryoneAndHere) {
+			mentionMatched := isDiscordBotMention(m, p.botID, botRoleID, p.respondToAtEveryoneAndHere)
+			patternMatched := matchMentionPatterns(m.Content, p.mentionPatterns)
+			if !mentionMatched && !patternMatched {
 				slog.Debug("discord: ignoring guild message without bot mention", "channel", m.ChannelID)
 				return
 			}
 			m.Content = stripDiscordMentionWithRole(m.Content, p.botID, botRoleID)
 			if m.MentionEveryone {
 				m.Content = stripEveryoneHere(m.Content)
+			}
+			if patternMatched && !mentionMatched {
+				m.Content = stripMentionPatterns(m.Content, p.mentionPatterns)
 			}
 		}
 
@@ -1118,6 +1141,24 @@ func stripDiscordMentionWithRole(text, botID string, botRoleID string) string {
 func stripEveryoneHere(text string) string {
 	text = strings.ReplaceAll(text, "@everyone", "")
 	text = strings.ReplaceAll(text, "@here", "")
+	return strings.TrimSpace(text)
+}
+
+// matchMentionPatterns returns true if any of the patterns match the text.
+func matchMentionPatterns(text string, patterns []*regexp.Regexp) bool {
+	for _, re := range patterns {
+		if re.MatchString(text) {
+			return true
+		}
+	}
+	return false
+}
+
+// stripMentionPatterns removes all mention pattern matches from text.
+func stripMentionPatterns(text string, patterns []*regexp.Regexp) string {
+	for _, re := range patterns {
+		text = re.ReplaceAllString(text, "")
+	}
 	return strings.TrimSpace(text)
 }
 
