@@ -134,6 +134,30 @@ func main() {
 	effectiveWorkDirs := make([]string, 0, len(cfg.Projects))
 
 	for _, proj := range cfg.Projects {
+		// Load identity/soul file contents into agent options
+		if proj.Agent.IdentityFile != "" {
+			data, err := os.ReadFile(proj.Agent.IdentityFile)
+			if err != nil {
+				slog.Error("failed to read identity_file", "project", proj.Name, "path", proj.Agent.IdentityFile, "error", err)
+				os.Exit(1)
+			}
+			if proj.Agent.Options == nil {
+				proj.Agent.Options = map[string]any{}
+			}
+			proj.Agent.Options["identity_prompt"] = strings.TrimSpace(string(data))
+		}
+		if proj.Agent.SoulFile != "" {
+			data, err := os.ReadFile(proj.Agent.SoulFile)
+			if err != nil {
+				slog.Error("failed to read soul_file", "project", proj.Name, "path", proj.Agent.SoulFile, "error", err)
+				os.Exit(1)
+			}
+			if proj.Agent.Options == nil {
+				proj.Agent.Options = map[string]any{}
+			}
+			proj.Agent.Options["soul_prompt"] = strings.TrimSpace(string(data))
+		}
+
 		agent, err := core.CreateAgent(proj.Agent.Type, proj.Agent.Options)
 		if err != nil {
 			slog.Error("failed to create agent", "project", proj.Name, "error", err)

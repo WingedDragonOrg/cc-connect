@@ -48,6 +48,8 @@ type Agent struct {
 	providerProxy  *core.ProviderProxy // local proxy for third-party providers
 	proxyLocalURL  string              // local URL of the proxy
 	platformPrompt string              // platform-specific formatting instructions
+	identityPrompt string              // identity/persona instructions (from identity_file)
+	soulPrompt     string              // soul/character instructions (from soul_file)
 
 	mu sync.RWMutex
 }
@@ -83,6 +85,10 @@ func New(opts map[string]any) (core.Agent, error) {
 	routerURL, _ := opts["router_url"].(string)
 	routerAPIKey, _ := opts["router_api_key"].(string)
 
+	// Identity and Soul persona files
+	identityPrompt, _ := opts["identity_prompt"].(string)
+	soulPrompt, _ := opts["soul_prompt"].(string)
+
 	if _, err := exec.LookPath("claude"); err != nil {
 		return nil, fmt.Errorf("claudecode: 'claude' CLI not found in PATH, please install Claude Code first")
 	}
@@ -96,6 +102,8 @@ func New(opts map[string]any) (core.Agent, error) {
 		activeIdx:       -1,
 		routerURL:       routerURL,
 		routerAPIKey:    routerAPIKey,
+		identityPrompt:  identityPrompt,
+		soulPrompt:      soulPrompt,
 	}, nil
 }
 
@@ -268,12 +276,14 @@ func (a *Agent) StartSession(ctx context.Context, sessionID string) (core.AgentS
 		}
 	}
 	platformPrompt := a.platformPrompt
+	identityPrompt := a.identityPrompt
+	soulPrompt := a.soulPrompt
 	// When router_url is set, --verbose conflicts with --output-format stream-json
 	// (verbose emits non-JSON text to stdout that corrupts the JSON stream).
 	disableVerbose := a.routerURL != ""
 	a.mu.Unlock()
 
-	return newClaudeSession(ctx, a.workDir, model, sessionID, a.mode, tools, disTools, extraEnv, platformPrompt, disableVerbose)
+	return newClaudeSession(ctx, a.workDir, model, sessionID, a.mode, tools, disTools, extraEnv, platformPrompt, identityPrompt, soulPrompt, disableVerbose)
 }
 
 func (a *Agent) ListSessions(ctx context.Context) ([]core.AgentSessionInfo, error) {
@@ -600,6 +610,18 @@ func (a *Agent) GlobalMemoryFile() string {
 }
 
 func (a *Agent) HasSystemPromptSupport() bool { return true }
+
+func (a *Agent) GetIdentityPrompt() string {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	return a.identityPrompt
+}
+
+func (a *Agent) GetSoulPrompt() string {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	return a.soulPrompt
+}
 
 // ── ProviderSwitcher implementation ──────────────────────────
 

@@ -212,9 +212,11 @@ type ProjectConfig struct {
 }
 
 type AgentConfig struct {
-	Type      string           `toml:"type"`
-	Options   map[string]any   `toml:"options"`
-	Providers []ProviderConfig `toml:"providers"`
+	Type         string           `toml:"type"`
+	IdentityFile string           `toml:"identity_file,omitempty"`
+	SoulFile     string           `toml:"soul_file,omitempty"`
+	Options      map[string]any   `toml:"options"`
+	Providers    []ProviderConfig `toml:"providers"`
 }
 
 // ProviderModelConfig defines a selectable model entry for a provider,

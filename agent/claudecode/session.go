@@ -42,7 +42,7 @@ type claudeSession struct {
 	alive           atomic.Bool
 }
 
-func newClaudeSession(ctx context.Context, workDir, model, sessionID, mode string, allowedTools, disallowedTools []string, extraEnv []string, platformPrompt string, disableVerbose bool) (*claudeSession, error) {
+func newClaudeSession(ctx context.Context, workDir, model, sessionID, mode string, allowedTools, disallowedTools []string, extraEnv []string, platformPrompt, identityPrompt, soulPrompt string, disableVerbose bool) (*claudeSession, error) {
 	sessionCtx, cancel := context.WithCancel(ctx)
 
 	args := []string{
@@ -83,6 +83,12 @@ func newClaudeSession(ctx context.Context, workDir, model, sessionID, mode strin
 	if sysPrompt := core.AgentSystemPrompt(); sysPrompt != "" {
 		if platformPrompt != "" {
 			sysPrompt += "\n## Formatting\n" + platformPrompt + "\n"
+		}
+		if identityPrompt != "" {
+			sysPrompt += "\n## Identity\n" + identityPrompt + "\n"
+		}
+		if soulPrompt != "" {
+			sysPrompt += "\n## Soul\n" + soulPrompt + "\n"
 		}
 		args = append(args, "--append-system-prompt", sysPrompt)
 	}

@@ -1927,6 +1927,15 @@ func (e *Engine) getOrCreateWorkspaceAgent(workspace string) (Agent, *SessionMan
 			opts["mode"] = m
 		}
 	}
+	// Copy identity/soul persona prompts
+	if pp, ok := e.agent.(PersonaProvider); ok {
+		if p := pp.GetIdentityPrompt(); p != "" {
+			opts["identity_prompt"] = p
+		}
+		if p := pp.GetSoulPrompt(); p != "" {
+			opts["soul_prompt"] = p
+		}
+	}
 
 	agent, err := CreateAgent(e.agent.Name(), opts)
 	if err != nil {

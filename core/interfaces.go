@@ -110,6 +110,14 @@ Environment variables CC_PROJECT and CC_SESSION_KEY are already set, so the rela
 `
 }
 
+// PersonaProvider is an optional interface for agents that carry identity/soul
+// persona prompts. The engine copies these when creating workspace agents so
+// that multi-workspace mode preserves the configured persona.
+type PersonaProvider interface {
+	GetIdentityPrompt() string
+	GetSoulPrompt() string
+}
+
 // SystemPromptSupporter is an optional marker interface for agents that
 // natively inject AgentSystemPrompt() (e.g., via --append-system-prompt).
 // Agents that do NOT implement this need the instructions written to their
