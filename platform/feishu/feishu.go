@@ -188,19 +188,9 @@ func newPlatform(name, domain string, opts map[string]any) (core.Platform, error
 		noReplyToTrigger = true
 	}
 
-	var mentionPatterns []*regexp.Regexp
-	if raw, ok := opts["mention_patterns"].(string); ok && raw != "" {
-		for _, pat := range strings.Split(raw, ",") {
-			pat = strings.TrimSpace(pat)
-			if pat == "" {
-				continue
-			}
-			re, err := regexp.Compile("(?i)" + pat)
-			if err != nil {
-				return nil, fmt.Errorf("%s: invalid mention_patterns regex %q: %w", name, pat, err)
-			}
-			mentionPatterns = append(mentionPatterns, re)
-		}
+	mentionPatterns, err := core.ParseMentionPatterns(name, opts)
+	if err != nil {
+		return nil, err
 	}
 
 	progressStyle := "legacy"

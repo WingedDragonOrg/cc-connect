@@ -198,6 +198,10 @@ type Engine struct {
 	// When true, append [ctx: ~N%] (or model self-report) to assistant replies shown on platforms.
 	showContextIndicator bool
 
+	// Workspace bootstrap persona prompts (from persona_dir)
+	persona    PersonaPrompts
+	personaDir string
+
 	// Multi-workspace mode
 	multiWorkspace    bool
 	baseDir           string
@@ -465,7 +469,12 @@ func (e *Engine) SetResetOnIdle(d time.Duration) {
 	e.resetOnIdle = d
 }
 
-// SetShowContextIndicator controls whether assistant replies include the [ctx: ~N%] suffix.
+/// SetPersona sets the workspace bootstrap persona prompts on the engine.
+func (e *Engine) SetPersona(dir string, p PersonaPrompts) {
+	e.personaDir = dir
+	e.persona = p
+}
+
 func (e *Engine) SetShowContextIndicator(show bool) {
 	e.showContextIndicator = show
 }
@@ -1927,13 +1936,29 @@ func (e *Engine) getOrCreateWorkspaceAgent(workspace string) (Agent, *SessionMan
 			opts["mode"] = m
 		}
 	}
-	// Copy identity/soul persona prompts
+	// Copy workspace persona prompts
 	if pp, ok := e.agent.(PersonaProvider); ok {
-		if p := pp.GetIdentityPrompt(); p != "" {
-			opts["identity_prompt"] = p
+		prompts := pp.GetPersonaPrompts()
+		if d := pp.GetPersonaDir(); d != "" {
+			opts["persona_dir"] = d
 		}
-		if p := pp.GetSoulPrompt(); p != "" {
-			opts["soul_prompt"] = p
+		if prompts.Agents != "" {
+			opts["agents_prompt"] = prompts.Agents
+		}
+		if prompts.Soul != "" {
+			opts["soul_prompt"] = prompts.Soul
+		}
+		if prompts.Tools != "" {
+			opts["tools_prompt"] = prompts.Tools
+		}
+		if prompts.Identity != "" {
+			opts["identity_prompt"] = prompts.Identity
+		}
+		if prompts.User != "" {
+			opts["user_prompt"] = prompts.User
+		}
+		if prompts.Memory != "" {
+			opts["memory_prompt"] = prompts.Memory
 		}
 	}
 
@@ -9433,7 +9458,11 @@ func (e *Engine) setupMemoryFile() (setupResult, string, error) {
 
 	existing, _ := os.ReadFile(filePath)
 	existingText := string(existing)
-	block := "\n" + ccConnectInstructionMarker + "\n" + AgentSystemPrompt() + "\n"
+	prompt := AgentSystemPrompt()
+	if projectCtx := BuildProjectContext(e.personaDir, e.persona, 0); projectCtx != "" {
+		prompt += projectCtx
+	}
+	block := "\n" + ccConnectInstructionMarker + "\n" + prompt + "\n"
 	if idx := strings.Index(existingText, ccConnectInstructionMarker); idx >= 0 {
 		if strings.Contains(existingText[idx:], AgentSystemPrompt()) {
 			return setupExists, baseName, nil

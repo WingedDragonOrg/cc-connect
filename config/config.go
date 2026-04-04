@@ -212,11 +212,13 @@ type ProjectConfig struct {
 }
 
 type AgentConfig struct {
-	Type         string           `toml:"type"`
-	IdentityFile string           `toml:"identity_file,omitempty"`
-	SoulFile     string           `toml:"soul_file,omitempty"`
-	Options      map[string]any   `toml:"options"`
-	Providers    []ProviderConfig `toml:"providers"`
+	Type            string           `toml:"type"`
+	PersonaDir      string           `toml:"persona_dir,omitempty"`       // directory containing AGENTS.md, SOUL.md, IDENTITY.md, USER.md, TOOLS.md, MEMORY.md
+	PersonaMaxChars *int             `toml:"persona_max_chars,omitempty"` // per-file char limit; default 20000
+	IdentityFile    string           `toml:"identity_file,omitempty"`     // deprecated: use persona_dir
+	SoulFile        string           `toml:"soul_file,omitempty"`         // deprecated: use persona_dir
+	Options         map[string]any   `toml:"options"`
+	Providers       []ProviderConfig `toml:"providers"`
 }
 
 // ProviderModelConfig defines a selectable model entry for a provider,
@@ -1564,8 +1566,12 @@ func pickAgentTemplateForNewProject(cfg *Config, opts EnsureProjectWithFeishuOpt
 
 func cloneAgentConfig(in AgentConfig) AgentConfig {
 	out := AgentConfig{
-		Type:    in.Type,
-		Options: cloneAnyMap(in.Options),
+		Type:            in.Type,
+		PersonaDir:      in.PersonaDir,
+		PersonaMaxChars: in.PersonaMaxChars,
+		IdentityFile:    in.IdentityFile,
+		SoulFile:        in.SoulFile,
+		Options:         cloneAnyMap(in.Options),
 	}
 	if len(in.Providers) > 0 {
 		out.Providers = make([]ProviderConfig, len(in.Providers))

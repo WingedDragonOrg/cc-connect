@@ -75,19 +75,9 @@ func New(opts map[string]any) (core.Platform, error) {
 	threadIsolation, _ := opts["thread_isolation"].(bool)
 	respondToAtEveryoneAndHere, _ := opts["respond_to_at_everyone_and_here"].(bool)
 
-	var mentionPatterns []*regexp.Regexp
-	if raw, ok := opts["mention_patterns"].(string); ok && raw != "" {
-		for _, pat := range strings.Split(raw, ",") {
-			pat = strings.TrimSpace(pat)
-			if pat == "" {
-				continue
-			}
-			re, err := regexp.Compile("(?i)" + pat)
-			if err != nil {
-				return nil, fmt.Errorf("discord: invalid mention_patterns regex %q: %w", pat, err)
-			}
-			mentionPatterns = append(mentionPatterns, re)
-		}
+	mentionPatterns, err := core.ParseMentionPatterns("discord", opts)
+	if err != nil {
+		return nil, err
 	}
 
 	var proxyU *url.URL

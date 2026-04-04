@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -31,6 +32,37 @@ func MergeEnv(base, extra []string) []string {
 
 // CheckAllowFrom logs a security warning at startup when allow_from is not
 // configured (defaults to permit-all). Platforms should call this during init.
+// ParseMentionPatterns extracts mention patterns from platform options.
+// It accepts both a []any of strings (TOML array) and a comma-separated string
+// (legacy format) for backwards compatibility.
+func ParseMentionPatterns(platformName string, opts map[string]any) ([]*regexp.Regexp, error) {
+	var raw []string
+	switch v := opts["mention_patterns"].(type) {
+	case []any:
+		for _, item := range v {
+			if s, ok := item.(string); ok && strings.TrimSpace(s) != "" {
+				raw = append(raw, strings.TrimSpace(s))
+			}
+		}
+	case string:
+		for _, pat := range strings.Split(v, ",") {
+			if pat = strings.TrimSpace(pat); pat != "" {
+				raw = append(raw, pat)
+			}
+		}
+	}
+
+	var patterns []*regexp.Regexp
+	for _, pat := range raw {
+		re, err := regexp.Compile("(?i)" + pat)
+		if err != nil {
+			return nil, fmt.Errorf("%s: invalid mention_patterns regex %q: %w", platformName, pat, err)
+		}
+		patterns = append(patterns, re)
+	}
+	return patterns, nil
+}
+
 func CheckAllowFrom(platform, allowFrom string) {
 	if strings.TrimSpace(allowFrom) == "" {
 		slog.Warn("allow_from is not set — all users are permitted. "+

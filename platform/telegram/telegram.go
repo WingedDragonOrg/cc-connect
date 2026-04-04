@@ -163,19 +163,9 @@ func New(opts map[string]any) (core.Platform, error) {
 	shareSessionInChannel, _ := opts["share_session_in_channel"].(bool)
 	enableReactions, _ := opts["enable_reactions"].(bool)
 
-	var mentionPatterns []*regexp.Regexp
-	if raw, ok := opts["mention_patterns"].(string); ok && raw != "" {
-		for _, pat := range strings.Split(raw, ",") {
-			pat = strings.TrimSpace(pat)
-			if pat == "" {
-				continue
-			}
-			re, err := regexp.Compile("(?i)" + pat)
-			if err != nil {
-				return nil, fmt.Errorf("telegram: invalid mention_patterns regex %q: %w", pat, err)
-			}
-			mentionPatterns = append(mentionPatterns, re)
-		}
+	mentionPatterns, err := core.ParseMentionPatterns("telegram", opts)
+	if err != nil {
+		return nil, err
 	}
 
 	return &Platform{token: token, allowFrom: allowFrom, groupReplyAll: groupReplyAll, shareSessionInChannel: shareSessionInChannel, enableReactions: enableReactions, mentionPatterns: mentionPatterns, httpClient: httpClient}, nil

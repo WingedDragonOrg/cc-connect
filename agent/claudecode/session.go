@@ -42,7 +42,7 @@ type claudeSession struct {
 	alive           atomic.Bool
 }
 
-func newClaudeSession(ctx context.Context, workDir, model, sessionID, mode string, allowedTools, disallowedTools []string, extraEnv []string, platformPrompt, identityPrompt, soulPrompt string, disableVerbose bool) (*claudeSession, error) {
+func newClaudeSession(ctx context.Context, workDir, model, sessionID, mode string, allowedTools, disallowedTools []string, extraEnv []string, platformPrompt string, personaDir string, persona core.PersonaPrompts, personaMaxChars int, disableVerbose bool) (*claudeSession, error) {
 	sessionCtx, cancel := context.WithCancel(ctx)
 
 	args := []string{
@@ -84,11 +84,8 @@ func newClaudeSession(ctx context.Context, workDir, model, sessionID, mode strin
 		if platformPrompt != "" {
 			sysPrompt += "\n## Formatting\n" + platformPrompt + "\n"
 		}
-		if identityPrompt != "" {
-			sysPrompt += "\n## Identity\n" + identityPrompt + "\n"
-		}
-		if soulPrompt != "" {
-			sysPrompt += "\n## Soul\n" + soulPrompt + "\n"
+		if projectCtx := core.BuildProjectContext(personaDir, persona, personaMaxChars); projectCtx != "" {
+			sysPrompt += projectCtx
 		}
 		args = append(args, "--append-system-prompt", sysPrompt)
 	}

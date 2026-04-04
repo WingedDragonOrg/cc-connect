@@ -134,28 +134,58 @@ func main() {
 	effectiveWorkDirs := make([]string, 0, len(cfg.Projects))
 
 	for _, proj := range cfg.Projects {
-		// Load identity/soul file contents into agent options
-		if proj.Agent.IdentityFile != "" {
-			data, err := os.ReadFile(proj.Agent.IdentityFile)
-			if err != nil {
-				slog.Error("failed to read identity_file", "project", proj.Name, "path", proj.Agent.IdentityFile, "error", err)
-				os.Exit(1)
-			}
-			if proj.Agent.Options == nil {
-				proj.Agent.Options = map[string]any{}
-			}
-			proj.Agent.Options["identity_prompt"] = strings.TrimSpace(string(data))
+		// Load persona workspace bootstrap files into agent options.
+		if proj.Agent.Options == nil {
+			proj.Agent.Options = map[string]any{}
 		}
-		if proj.Agent.SoulFile != "" {
-			data, err := os.ReadFile(proj.Agent.SoulFile)
+		if proj.Agent.PersonaDir != "" {
+			persona, err := core.LoadPersonaDir(proj.Agent.PersonaDir)
 			if err != nil {
-				slog.Error("failed to read soul_file", "project", proj.Name, "path", proj.Agent.SoulFile, "error", err)
+				slog.Error("failed to load persona_dir", "project", proj.Name, "path", proj.Agent.PersonaDir, "error", err)
 				os.Exit(1)
 			}
-			if proj.Agent.Options == nil {
-				proj.Agent.Options = map[string]any{}
+			proj.Agent.Options["persona_dir"] = proj.Agent.PersonaDir
+			if persona.Agents != "" {
+				proj.Agent.Options["agents_prompt"] = persona.Agents
 			}
-			proj.Agent.Options["soul_prompt"] = strings.TrimSpace(string(data))
+			if persona.Soul != "" {
+				proj.Agent.Options["soul_prompt"] = persona.Soul
+			}
+			if persona.Tools != "" {
+				proj.Agent.Options["tools_prompt"] = persona.Tools
+			}
+			if persona.Identity != "" {
+				proj.Agent.Options["identity_prompt"] = persona.Identity
+			}
+			if persona.User != "" {
+				proj.Agent.Options["user_prompt"] = persona.User
+			}
+			if persona.Memory != "" {
+				proj.Agent.Options["memory_prompt"] = persona.Memory
+			}
+			if proj.Agent.PersonaMaxChars != nil {
+				proj.Agent.Options["persona_max_chars"] = *proj.Agent.PersonaMaxChars
+			}
+		} else {
+			// Deprecated: individual file paths — load as identity/soul only.
+			if proj.Agent.IdentityFile != "" {
+				slog.Warn("identity_file is deprecated, use persona_dir instead", "project", proj.Name)
+				data, err := os.ReadFile(proj.Agent.IdentityFile)
+				if err != nil {
+					slog.Error("failed to read identity_file", "project", proj.Name, "path", proj.Agent.IdentityFile, "error", err)
+					os.Exit(1)
+				}
+				proj.Agent.Options["identity_prompt"] = strings.TrimSpace(string(data))
+			}
+			if proj.Agent.SoulFile != "" {
+				slog.Warn("soul_file is deprecated, use persona_dir instead", "project", proj.Name)
+				data, err := os.ReadFile(proj.Agent.SoulFile)
+				if err != nil {
+					slog.Error("failed to read soul_file", "project", proj.Name, "path", proj.Agent.SoulFile, "error", err)
+					os.Exit(1)
+				}
+				proj.Agent.Options["soul_prompt"] = strings.TrimSpace(string(data))
+			}
 		}
 
 		agent, err := core.CreateAgent(proj.Agent.Type, proj.Agent.Options)
@@ -228,6 +258,24 @@ func main() {
 			showCtx = *proj.ShowContextIndicator
 		}
 		engine.SetShowContextIndicator(showCtx)
+		if dir, _ := proj.Agent.Options["persona_dir"].(string); dir != "" {
+			var p core.PersonaPrompts
+			p.Agents, _ = proj.Agent.Options["agents_prompt"].(string)
+			p.Soul, _ = proj.Agent.Options["soul_prompt"].(string)
+			p.Tools, _ = proj.Agent.Options["tools_prompt"].(string)
+			p.Identity, _ = proj.Agent.Options["identity_prompt"].(string)
+			p.User, _ = proj.Agent.Options["user_prompt"].(string)
+			p.Memory, _ = proj.Agent.Options["memory_prompt"].(string)
+			engine.SetPersona(dir, p)
+		} else {
+			// Deprecated fallback: identity_prompt / soul_prompt only
+			var p core.PersonaPrompts
+			p.Identity, _ = proj.Agent.Options["identity_prompt"].(string)
+			p.Soul, _ = proj.Agent.Options["soul_prompt"].(string)
+			if !p.IsEmpty() {
+				engine.SetPersona("", p)
+			}
+		}
 		engine.SetAttachmentSendEnabled(cfg.AttachmentSend != "off")
 		engine.SetBaseWorkDir(workDir)
 		engine.SetProjectStateStore(projectState)
