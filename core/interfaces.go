@@ -3,6 +3,7 @@ package core
 import (
 	"context"
 	"errors"
+	"time"
 )
 
 // Platform abstracts a messaging platform (Feishu, DingTalk, Slack, etc.).
@@ -262,6 +263,23 @@ type ToolAuthorizer interface {
 // conversation history from their backend session files.
 type HistoryProvider interface {
 	GetSessionHistory(ctx context.Context, sessionID string, limit int) ([]HistoryEntry, error)
+}
+
+// [channel-history] ChannelHistoryEntry represents a single message from the platform channel,
+// used to provide conversation context to the agent.
+type ChannelHistoryEntry struct {
+	Sender    string
+	Body      string
+	Timestamp time.Time
+}
+
+// [channel-history] ChannelHistoryProvider is an optional interface for platforms that track
+// recent channel messages to provide conversation context to the agent.
+// When the agent replies, the engine clears the history so the next turn
+// only sees messages that arrived after the last reply.
+type ChannelHistoryProvider interface {
+	GetChannelHistory(channelID string) []ChannelHistoryEntry
+	ClearChannelHistory(channelID string)
 }
 
 // ProviderConfig holds API provider settings for an agent.

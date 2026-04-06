@@ -41,6 +41,7 @@ type Platform struct {
 	channelNameCache      map[string]string
 	channelCacheMu        sync.RWMutex
 	userNameCache         sync.Map // userID -> display name
+	historyStore          *core.ChannelHistoryStore // [channel-history]
 }
 
 func New(opts map[string]any) (core.Platform, error) {
@@ -49,15 +50,23 @@ func New(opts map[string]any) (core.Platform, error) {
 	allowFrom, _ := opts["allow_from"].(string)
 	core.CheckAllowFrom("slack", allowFrom)
 	shareSessionInChannel, _ := opts["share_session_in_channel"].(bool)
+	contextMessages, _ := opts["context_messages"].(float64)
 	if botToken == "" || appToken == "" {
 		return nil, fmt.Errorf("slack: bot_token and app_token are required")
 	}
+
+	var histStore *core.ChannelHistoryStore
+	if int(contextMessages) > 0 {
+		histStore = core.NewChannelHistoryStore(int(contextMessages), 0)
+	}
+
 	return &Platform{
 		botToken:              botToken,
 		appToken:              appToken,
 		allowFrom:             allowFrom,
 		shareSessionInChannel: shareSessionInChannel,
 		channelNameCache:      make(map[string]string),
+		historyStore:          histStore,
 	}, nil
 }
 
@@ -150,6 +159,11 @@ func (p *Platform) handleEvent(evt socketmode.Event) {
 				if content == "" && len(images) == 0 && audio == nil && len(docFiles) == 0 {
 					return
 				}
+				// [channel-history] Record @bot mentions for channel history context.
+				if p.historyStore != nil && content != "" {
+					p.historyStore.Record(ev.Channel, p.resolveUserName(ev.User), content)
+				}
+
 				msg := &core.Message{
 					SessionKey: sessionKey, Platform: "slack",
 					UserID: ev.User, UserName: p.resolveUserName(ev.User),
@@ -198,6 +212,11 @@ func (p *Platform) handleEvent(evt socketmode.Event) {
 
 				if ev.Text == "" && len(images) == 0 && audio == nil && len(docFiles) == 0 {
 					return
+				}
+
+				// [channel-history] Record messages for channel history context.
+				if p.historyStore != nil && ev.Text != "" {
+					p.historyStore.Record(ev.Channel, p.resolveUserName(ev.User), ev.Text)
 				}
 
 				msg := &core.Message{
@@ -609,4 +628,19 @@ func (p *Platform) Stop() error {
 		p.cancel()
 	}
 	return nil
+}
+
+// [channel-history] GetChannelHistory implements core.ChannelHistoryProvider.
+func (p *Platform) GetChannelHistory(channelID string) []core.ChannelHistoryEntry {
+	if p.historyStore == nil {
+		return nil
+	}
+	return p.historyStore.Get(channelID)
+}
+
+// [channel-history] ClearChannelHistory implements core.ChannelHistoryProvider.
+func (p *Platform) ClearChannelHistory(channelID string) {
+	if p.historyStore != nil {
+		p.historyStore.Clear(channelID)
+	}
 }

@@ -60,6 +60,7 @@ type Platform struct {
 	readyCh                    chan struct{}
 	seenMsgs                   sync.Map // message ID dedup: prevents duplicate MessageCreate events
 	seenInteractions           sync.Map // interaction ID dedup: prevents duplicate slash/button events
+	historyStore               *core.ChannelHistoryStore // [channel-history]
 }
 
 func New(opts map[string]any) (core.Platform, error) {
@@ -80,6 +81,8 @@ func New(opts map[string]any) (core.Platform, error) {
 		return nil, err
 	}
 
+	contextMessages, _ := opts["context_messages"].(float64)
+
 	var proxyU *url.URL
 	if proxyStr, _ := opts["proxy"].(string); proxyStr != "" {
 		u, err := url.Parse(proxyStr)
@@ -93,6 +96,11 @@ func New(opts map[string]any) (core.Platform, error) {
 		proxyU = u
 	}
 
+	var histStore *core.ChannelHistoryStore
+	if int(contextMessages) > 0 {
+		histStore = core.NewChannelHistoryStore(int(contextMessages), 0)
+	}
+
 	return &Platform{
 		token:                      token,
 		allowFrom:                  allowFrom,
@@ -104,6 +112,7 @@ func New(opts map[string]any) (core.Platform, error) {
 		respondToAtEveryoneAndHere: respondToAtEveryoneAndHere,
 		mentionPatterns:            mentionPatterns,
 		proxyURL:                   proxyU,
+		historyStore:               histStore,
 	}, nil
 }
 
@@ -466,6 +475,11 @@ func (p *Platform) Start(handler core.MessageHandler) error {
 		if !core.AllowList(p.allowFrom, m.Author.ID) {
 			slog.Debug("discord: message from unauthorized user", "user", m.Author.ID)
 			return
+		}
+
+		// [channel-history] Record all guild messages for channel context (before mention filtering).
+		if m.GuildID != "" && p.historyStore != nil && m.Content != "" {
+			p.historyStore.Record(m.ChannelID, m.Author.Username, m.Content)
 		}
 
 		// In guild channels, only respond when the bot is @mentioned (unless group_reply_all).
@@ -1111,6 +1125,21 @@ func (p *Platform) Stop() error {
 		return p.session.Close()
 	}
 	return nil
+}
+
+// [channel-history] GetChannelHistory implements core.ChannelHistoryProvider.
+func (p *Platform) GetChannelHistory(channelID string) []core.ChannelHistoryEntry {
+	if p.historyStore == nil {
+		return nil
+	}
+	return p.historyStore.Get(channelID)
+}
+
+// [channel-history] ClearChannelHistory implements core.ChannelHistoryProvider.
+func (p *Platform) ClearChannelHistory(channelID string) {
+	if p.historyStore != nil {
+		p.historyStore.Clear(channelID)
+	}
 }
 
 // stripDiscordMention removes <@botID> and <@!botID> (nick mention) from text.

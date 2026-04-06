@@ -127,6 +127,7 @@ type Platform struct {
 	newBot              botFactory
 	newBackoffTimer     func(time.Duration) backoffTimer
 	newTypingTicker     func(time.Duration) typingTicker
+	historyStore        *core.ChannelHistoryStore // [channel-history]
 }
 
 const (
@@ -168,7 +169,13 @@ func New(opts map[string]any) (core.Platform, error) {
 		return nil, err
 	}
 
-	return &Platform{token: token, allowFrom: allowFrom, groupReplyAll: groupReplyAll, shareSessionInChannel: shareSessionInChannel, enableReactions: enableReactions, mentionPatterns: mentionPatterns, httpClient: httpClient}, nil
+	contextMessages, _ := opts["context_messages"].(float64)
+	var histStore *core.ChannelHistoryStore
+	if int(contextMessages) > 0 {
+		histStore = core.NewChannelHistoryStore(int(contextMessages), 0)
+	}
+
+	return &Platform{token: token, allowFrom: allowFrom, groupReplyAll: groupReplyAll, shareSessionInChannel: shareSessionInChannel, enableReactions: enableReactions, mentionPatterns: mentionPatterns, httpClient: httpClient, historyStore: histStore}, nil
 }
 
 func (p *Platform) Name() string { return "telegram" }
@@ -356,6 +363,11 @@ func (p *Platform) handleMessage(ctx context.Context, msg *models.Message) {
 	chatName := ""
 	if isGroup {
 		chatName = msg.Chat.Title
+	}
+
+	// [channel-history] Record all group messages for channel context (before mention filtering).
+	if isGroup && p.historyStore != nil && msg.Text != "" {
+		p.historyStore.Record(channelKey, userName, msg.Text)
 	}
 
 	if isGroup && !p.groupReplyAll {
@@ -1516,6 +1528,21 @@ func sanitizeTelegramCommand(cmd string) string {
 		result = result[:32]
 	}
 	return result
+}
+
+// [channel-history] GetChannelHistory implements core.ChannelHistoryProvider.
+func (p *Platform) GetChannelHistory(channelID string) []core.ChannelHistoryEntry {
+	if p.historyStore == nil {
+		return nil
+	}
+	return p.historyStore.Get(channelID)
+}
+
+// [channel-history] ClearChannelHistory implements core.ChannelHistoryProvider.
+func (p *Platform) ClearChannelHistory(channelID string) {
+	if p.historyStore != nil {
+		p.historyStore.Clear(channelID)
+	}
 }
 
 var _ core.AudioSender = (*Platform)(nil)

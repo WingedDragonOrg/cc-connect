@@ -685,6 +685,8 @@ app_secret = "your-feishu-app-secret"
 #                           # 默认 true：用「回复消息」API（引用用户消息）。设为 false 则在会话里发普通消息、不引用触发消息。
 # progress_style = "legacy" # Progress rendering style: legacy | compact | card
 #                           # 进度消息展示风格：legacy（逐条消息）| compact（单消息持续更新）| card（结构化卡片）
+# context_messages = 0  # [channel-history] Number of recent channel messages to include as context for the agent (0 = disabled)
+#                      # 发送给 agent 时携带的最近频道消息数（0 = 禁用）
 
 # Lark (International Version) / Lark 国际版
 # Lark uses Webhook mode instead of WebSocket long-connection.
@@ -743,6 +745,8 @@ app_secret = "your-feishu-app-secret"
 # group_reply_all = false  # If true, respond to ALL group messages without @mention / 设为 true 群聊无需 @ 也响应
 # share_session_in_channel = false  # If true, all users in a group share one agent session / 群聊共享会话
 # enable_reactions = false  # If true, add ⚡ reaction to incoming messages / 设为 true 收到消息时添加 ⚡ 表情
+# context_messages = 0  # [channel-history] Number of recent channel messages to include as context for the agent (0 = disabled)
+#                      # 发送给 agent 时携带的最近频道消息数（0 = 禁用）
 
 # Slack (uncomment to enable / 取消注释以启用)
 # 1. Create an app at https://api.slack.com/apps / 创建应用
@@ -797,6 +801,8 @@ app_secret = "your-feishu-app-secret"
 #                              # 设为 true 时，将 @everyone/@here 视为直接 @ 机器人，使机器人响应
 # mention_patterns = ["@小助手", "hey\\s+bot"]  # Array of regexes (case-insensitive) that trigger the bot without @mention
 #                                                # 正则表达式数组（大小写不敏感），匹配时无需 @ 即可触发机器人
+# context_messages = 0  # [channel-history] Number of recent channel messages to include as context for the agent (0 = disabled)
+#                      # 发送给 agent 时携带的最近频道消息数（0 = 禁用）
 # proxy = "http://127.0.0.1:7890"  # Optional HTTP/SOCKS5 proxy for Discord API & Gateway / 可选代理
 # proxy_username = ""              # Optional proxy auth username / 代理用户名
 # proxy_password = ""              # Optional proxy auth password / 代理密码

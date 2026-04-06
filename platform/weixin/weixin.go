@@ -66,6 +66,8 @@ type Platform struct {
 	tokensMu   sync.RWMutex
 	tokens     map[string]string
 	tokensPath string
+
+	historyStore *core.ChannelHistoryStore // [channel-history]
 }
 
 func sanitizePathSegment(s string) string {
@@ -135,6 +137,12 @@ func New(opts map[string]any) (core.Platform, error) {
 		slog.Info("weixin: using proxy", "proxy", u.Redacted())
 	}
 
+	contextMessages, _ := opts["context_messages"].(float64)
+	var histStore *core.ChannelHistoryStore
+	if int(contextMessages) > 0 {
+		histStore = core.NewChannelHistoryStore(int(contextMessages), 0)
+	}
+
 	p := &Platform{
 		token:        token,
 		baseURL:      baseURL,
@@ -147,6 +155,7 @@ func New(opts map[string]any) (core.Platform, error) {
 		httpClient:   httpClient,
 		tokens:       make(map[string]string),
 		dedup:        make(map[string]time.Time),
+		historyStore: histStore,
 	}
 	p.api = newAPIClient(baseURL, token, routeTag, httpClient)
 
@@ -417,6 +426,11 @@ func (p *Platform) dispatchInbound(ctx context.Context, m *weixinMessage, h core
 		return
 	}
 
+	// [channel-history] Record message for channel history context.
+	if p.historyStore != nil && strings.TrimSpace(body) != "" {
+		p.historyStore.Record(from, shortWeixinUser(from), body)
+	}
+
 	rc := &replyContext{peerUserID: from, contextToken: strings.TrimSpace(m.ContextToken)}
 	msgID := fmt.Sprintf("%d", m.MessageID)
 	if m.MessageID == 0 {
@@ -529,6 +543,21 @@ func (p *Platform) ReconstructReplyCtx(sessionKey string) (any, error) {
 // FormattingInstructions implements core.FormattingInstructionProvider.
 func (p *Platform) FormattingInstructions() string {
 	return "Replies are delivered as plain text to Weixin. Avoid markdown tables; use short paragraphs."
+}
+
+// [channel-history] GetChannelHistory implements core.ChannelHistoryProvider.
+func (p *Platform) GetChannelHistory(channelID string) []core.ChannelHistoryEntry {
+	if p.historyStore == nil {
+		return nil
+	}
+	return p.historyStore.Get(channelID)
+}
+
+// [channel-history] ClearChannelHistory implements core.ChannelHistoryProvider.
+func (p *Platform) ClearChannelHistory(channelID string) {
+	if p.historyStore != nil {
+		p.historyStore.Clear(channelID)
+	}
 }
 
 var (

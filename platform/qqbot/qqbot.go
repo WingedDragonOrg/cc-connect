@@ -81,6 +81,8 @@ type Platform struct {
 	// msg_seq counter per event msg_id (for multiple replies to same event)
 	msgSeqMu  sync.Mutex
 	msgSeqMap map[string]*msgSeqEntry
+
+	historyStore *core.ChannelHistoryStore // [channel-history]
 }
 
 // msgSeqEntry tracks msg_seq counter with a creation timestamp for TTL eviction.
@@ -120,6 +122,12 @@ func New(opts map[string]any) (core.Platform, error) {
 		intents = int(v)
 	}
 
+	contextMessages, _ := opts["context_messages"].(float64)
+	var histStore *core.ChannelHistoryStore
+	if int(contextMessages) > 0 {
+		histStore = core.NewChannelHistoryStore(int(contextMessages), 0)
+	}
+
 	core.CheckAllowFrom("qqbot", allowFrom)
 	return &Platform{
 		appID:                 appID,
@@ -129,6 +137,7 @@ func New(opts map[string]any) (core.Platform, error) {
 		shareSessionInChannel: shareSessionInChannel,
 		intents:               intents,
 		markdownSupport:       markdownSupport,
+		historyStore:          histStore,
 	}, nil
 }
 
@@ -894,6 +903,11 @@ func (p *Platform) handleGroupMessage(data json.RawMessage) {
 		ReplyCtx:   rctx,
 	}
 
+	// [channel-history] Record group messages for channel history context.
+	if p.historyStore != nil && content != "" {
+		p.historyStore.Record(d.GroupOpenID, d.Author.MemberOpenID, content)
+	}
+
 	slog.Debug("qqbot: group message received", "group", d.GroupOpenID, "user", d.Author.MemberOpenID, "len", len(content), "images", len(images))
 	p.handler(p, msg)
 }
@@ -1169,4 +1183,19 @@ func stripAtMention(content string) string {
 		}
 	}
 	return content
+}
+
+// [channel-history] GetChannelHistory implements core.ChannelHistoryProvider.
+func (p *Platform) GetChannelHistory(channelID string) []core.ChannelHistoryEntry {
+	if p.historyStore == nil {
+		return nil
+	}
+	return p.historyStore.Get(channelID)
+}
+
+// [channel-history] ClearChannelHistory implements core.ChannelHistoryProvider.
+func (p *Platform) ClearChannelHistory(channelID string) {
+	if p.historyStore != nil {
+		p.historyStore.Clear(channelID)
+	}
 }

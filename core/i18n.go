@@ -516,6 +516,8 @@ const (
 	MsgWsBindUsage             MsgKey = "ws_bind_usage"
 	MsgWsBindSuccess           MsgKey = "ws_bind_success"
 	MsgWsBindNotFound          MsgKey = "ws_bind_not_found"
+	MsgWsBindCreated           MsgKey = "ws_bind_created"
+	MsgWsBindCreateFailed      MsgKey = "ws_bind_create_failed"
 	MsgWsRouteUsage            MsgKey = "ws_route_usage"
 	MsgWsRouteSuccess          MsgKey = "ws_route_success"
 	MsgWsRouteAbsoluteRequired MsgKey = "ws_route_absolute_required"
@@ -3442,11 +3444,11 @@ var messages = map[MsgKey]map[Language]string{
 		LangSpanish:            "Uso: `/workspace init <git-url>`",
 	},
 	MsgWsBindUsage: {
-		LangEnglish:            "Usage: `/workspace bind <workspace-name>`",
-		LangChinese:            "用法: `/workspace bind <工作区名称>`",
-		LangTraditionalChinese: "用法: `/workspace bind <工作區名稱>`",
-		LangJapanese:           "使い方: `/workspace bind <ワークスペース名>`",
-		LangSpanish:            "Uso: `/workspace bind <nombre-workspace>`",
+		LangEnglish:            "Usage: `/workspace bind [-c] <workspace-name>`\n`-c` creates the directory if it doesn't exist",
+		LangChinese:            "用法: `/workspace bind [-c] <工作区名称>`\n`-c` 若目录不存在则自动创建",
+		LangTraditionalChinese: "用法: `/workspace bind [-c] <工作區名稱>`\n`-c` 若目錄不存在則自動建立",
+		LangJapanese:           "使い方: `/workspace bind [-c] <ワークスペース名>`\n`-c` ディレクトリが存在しない場合は作成します",
+		LangSpanish:            "Uso: `/workspace bind [-c] <nombre-workspace>`\n`-c` crea el directorio si no existe",
 	},
 	MsgWsBindSuccess: {
 		LangEnglish:            "✅ Workspace bound: `%s`",
@@ -3456,11 +3458,25 @@ var messages = map[MsgKey]map[Language]string{
 		LangSpanish:            "✅ Workspace vinculado: `%s`",
 	},
 	MsgWsBindNotFound: {
-		LangEnglish:            "Workspace not found: `%s`",
-		LangChinese:            "工作区不存在: `%s`",
-		LangTraditionalChinese: "工作區不存在: `%s`",
-		LangJapanese:           "ワークスペースが見つかりません: `%s`",
-		LangSpanish:            "Workspace no encontrado: `%s`",
+		LangEnglish:            "Workspace not found: `%s`\nTip: use `/workspace bind -c %s` to create it",
+		LangChinese:            "工作区不存在: `%s`\n提示: 使用 `/workspace bind -c %s` 可自动创建",
+		LangTraditionalChinese: "工作區不存在: `%s`\n提示: 使用 `/workspace bind -c %s` 可自動建立",
+		LangJapanese:           "ワークスペースが見つかりません: `%s`\nヒント: `/workspace bind -c %s` で作成できます",
+		LangSpanish:            "Workspace no encontrado: `%s`\nSugerencia: usa `/workspace bind -c %s` para crearlo",
+	},
+	MsgWsBindCreated: {
+		LangEnglish:            "✅ Workspace created and bound: `%s`",
+		LangChinese:            "✅ 工作区已创建并绑定: `%s`",
+		LangTraditionalChinese: "✅ 工作區已建立並綁定: `%s`",
+		LangJapanese:           "✅ ワークスペースを作成してバインドしました: `%s`",
+		LangSpanish:            "✅ Workspace creado y vinculado: `%s`",
+	},
+	MsgWsBindCreateFailed: {
+		LangEnglish:            "Failed to create workspace `%s`: %v",
+		LangChinese:            "创建工作区 `%s` 失败: %v",
+		LangTraditionalChinese: "建立工作區 `%s` 失敗: %v",
+		LangJapanese:           "ワークスペース `%s` の作成に失敗しました: %v",
+		LangSpanish:            "Error al crear workspace `%s`: %v",
 	},
 	MsgWsRouteUsage: {
 		LangEnglish:            "Usage: `/workspace route <absolute-path>`",

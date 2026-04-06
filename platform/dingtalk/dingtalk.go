@@ -49,6 +49,7 @@ type Platform struct {
 	tokenMu               sync.Mutex
 	accessToken           string
 	tokenExpiry           time.Time
+	historyStore          *core.ChannelHistoryStore // [channel-history]
 }
 
 func New(opts map[string]any) (core.Platform, error) {
@@ -81,6 +82,12 @@ func New(opts map[string]any) (core.Platform, error) {
 	}
 	// agent_id can be 0 for testing, but will fail in production
 
+	contextMessages, _ := opts["context_messages"].(float64)
+	var histStore *core.ChannelHistoryStore
+	if int(contextMessages) > 0 {
+		histStore = core.NewChannelHistoryStore(int(contextMessages), 0)
+	}
+
 	return &Platform{
 		clientID:              clientID,
 		clientSecret:          clientSecret,
@@ -89,6 +96,7 @@ func New(opts map[string]any) (core.Platform, error) {
 		allowFrom:             allowFrom,
 		shareSessionInChannel: shareSessionInChannel,
 		httpClient:            &http.Client{Timeout: 30 * time.Second},
+		historyStore:          histStore,
 	}, nil
 }
 
@@ -171,6 +179,11 @@ func (p *Platform) onMessage(data *chatbot.BotCallbackDataModel) {
 	if data.Msgtype == "audio" {
 		p.handleAudioMessage(data, sessionKey)
 		return
+	}
+
+	// [channel-history] Record message history for group conversations (ConversationType "2" = group)
+	if data.ConversationType == "2" && p.historyStore != nil && data.Text.Content != "" {
+		p.historyStore.Record(data.ConversationId, data.SenderNick, data.Text.Content)
 	}
 
 	// Handle text messages (default)
@@ -793,4 +806,19 @@ func preprocessDingTalkMarkdown(s string) string {
 		}
 	}
 	return sb.String()
+}
+
+// [channel-history] GetChannelHistory implements core.ChannelHistoryProvider.
+func (p *Platform) GetChannelHistory(channelID string) []core.ChannelHistoryEntry {
+	if p.historyStore == nil {
+		return nil
+	}
+	return p.historyStore.Get(channelID)
+}
+
+// [channel-history] ClearChannelHistory implements core.ChannelHistoryProvider.
+func (p *Platform) ClearChannelHistory(channelID string) {
+	if p.historyStore != nil {
+		p.historyStore.Clear(channelID)
+	}
 }

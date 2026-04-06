@@ -39,6 +39,7 @@ type Platform struct {
 	selfID                int64
 	dedup                 core.MessageDedup
 	groupNameCache        sync.Map // groupID -> group name
+	historyStore          *core.ChannelHistoryStore // [channel-history]
 }
 
 func New(opts map[string]any) (core.Platform, error) {
@@ -50,12 +51,19 @@ func New(opts map[string]any) (core.Platform, error) {
 	allowFrom, _ := opts["allow_from"].(string)
 	shareSessionInChannel, _ := opts["share_session_in_channel"].(bool)
 
+	contextMessages, _ := opts["context_messages"].(float64)
+	var histStore *core.ChannelHistoryStore
+	if int(contextMessages) > 0 {
+		histStore = core.NewChannelHistoryStore(int(contextMessages), 0)
+	}
+
 	core.CheckAllowFrom("qq", allowFrom)
 	return &Platform{
 		wsURL:                 wsURL,
 		token:                 token,
 		allowFrom:             allowFrom,
 		shareSessionInChannel: shareSessionInChannel,
+		historyStore:          histStore,
 	}, nil
 }
 
@@ -235,6 +243,11 @@ func (p *Platform) handleMessage(payload map[string]any) {
 		Images:     images,
 		Audio:      audio,
 		ReplyCtx:   rctx,
+	}
+
+	// [channel-history] Record group messages for channel history context.
+	if msgType == "group" && p.historyStore != nil && text != "" {
+		p.historyStore.Record(strconv.FormatInt(groupID, 10), userName, text)
 	}
 
 	slog.Debug("qq: message received", "type", msgType, "user", userID, "text_len", len(text))
@@ -545,4 +558,19 @@ func downloadFile(url string) ([]byte, string, error) {
 		mime = http.DetectContentType(data)
 	}
 	return data, mime, nil
+}
+
+// [channel-history] GetChannelHistory implements core.ChannelHistoryProvider.
+func (p *Platform) GetChannelHistory(channelID string) []core.ChannelHistoryEntry {
+	if p.historyStore == nil {
+		return nil
+	}
+	return p.historyStore.Get(channelID)
+}
+
+// [channel-history] ClearChannelHistory implements core.ChannelHistoryProvider.
+func (p *Platform) ClearChannelHistory(channelID string) {
+	if p.historyStore != nil {
+		p.historyStore.Clear(channelID)
+	}
 }

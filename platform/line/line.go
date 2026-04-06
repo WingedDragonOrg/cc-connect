@@ -29,16 +29,17 @@ type replyContext struct {
 }
 
 type Platform struct {
-	channelSecret string
-	channelToken  string
-	allowFrom     string
-	port          string
-	callbackPath  string
-	bot           *messaging_api.MessagingApiAPI
-	server        *http.Server
-	handler       core.MessageHandler
-	userNameCache sync.Map // userID -> display name
+	channelSecret  string
+	channelToken   string
+	allowFrom      string
+	port           string
+	callbackPath   string
+	bot            *messaging_api.MessagingApiAPI
+	server         *http.Server
+	handler        core.MessageHandler
+	userNameCache  sync.Map // userID -> display name
 	groupNameCache sync.Map // groupID -> group name
+	historyStore   *core.ChannelHistoryStore // [channel-history]
 }
 
 func New(opts map[string]any) (core.Platform, error) {
@@ -58,6 +59,13 @@ func New(opts map[string]any) (core.Platform, error) {
 		path = "/callback"
 	}
 
+	contextMessages, _ := opts["context_messages"].(float64)
+
+	var histStore *core.ChannelHistoryStore
+	if int(contextMessages) > 0 {
+		histStore = core.NewChannelHistoryStore(int(contextMessages), 0)
+	}
+
 	core.CheckAllowFrom("line", allowFrom)
 	return &Platform{
 		channelSecret: secret,
@@ -65,6 +73,7 @@ func New(opts map[string]any) (core.Platform, error) {
 		allowFrom:     allowFrom,
 		port:          port,
 		callbackPath:  path,
+		historyStore:  histStore,
 	}, nil
 }
 
@@ -132,6 +141,13 @@ func (p *Platform) webhookHandler(w http.ResponseWriter, r *http.Request) {
 		chatName := ""
 		if targetType == "group" {
 			chatName = p.resolveGroupName(targetID)
+		}
+
+		// [channel-history] Record group/room messages for channel history context.
+		if (targetType == "group" || targetType == "room") && p.historyStore != nil {
+			if tm, ok := e.Message.(webhook.TextMessageContent); ok && tm.Text != "" {
+				p.historyStore.Record(targetID, p.resolveUserName(userID), tm.Text)
+			}
 		}
 
 		switch m := e.Message.(type) {
@@ -312,6 +328,21 @@ func (p *Platform) ReconstructReplyCtx(sessionKey string) (any, error) {
 		return nil, fmt.Errorf("line: invalid session key %q", sessionKey)
 	}
 	return replyContext{targetID: parts[1], targetType: "user"}, nil
+}
+
+// [channel-history] GetChannelHistory implements core.ChannelHistoryProvider.
+func (p *Platform) GetChannelHistory(channelID string) []core.ChannelHistoryEntry {
+	if p.historyStore == nil {
+		return nil
+	}
+	return p.historyStore.Get(channelID)
+}
+
+// [channel-history] ClearChannelHistory implements core.ChannelHistoryProvider.
+func (p *Platform) ClearChannelHistory(channelID string) {
+	if p.historyStore != nil {
+		p.historyStore.Clear(channelID)
+	}
 }
 
 func (p *Platform) Stop() error {

@@ -1880,6 +1880,15 @@ func (e *Engine) processInteractiveMessageWith(p Platform, msg *Message, session
 
 	promptContent := e.buildSenderPrompt(msg.Content, msg.UserID, msg.Platform, msg.SessionKey)
 
+	// [channel-history] Inject recent channel messages as conversation context when the
+	// platform tracks them (opt-in via ChannelHistoryProvider).
+	if chp, ok := p.(ChannelHistoryProvider); ok {
+		channelID := extractChannelID(msg.SessionKey)
+		if history := chp.GetChannelHistory(channelID); len(history) > 0 {
+			promptContent = buildChannelContextPrompt(history, promptContent)
+		}
+	}
+
 	sendStart := time.Now()
 	state.mu.Lock()
 	state.fromVoice = msg.FromVoice
@@ -1899,6 +1908,12 @@ func (e *Engine) processInteractiveMessageWith(p Platform, msg *Message, session
 		slog.Warn("slow agent send", "elapsed", elapsed, "session", msg.SessionKey, "content_len", len(msg.Content))
 	}
 	stopTyping = nil // ownership transferred; prevent defer from double-stopping
+
+	// [channel-history] Clear channel history after the agent has replied so the next turn
+	// only sees messages that arrive after this reply.
+	if chp, ok := p.(ChannelHistoryProvider); ok {
+		chp.ClearChannelHistory(extractChannelID(msg.SessionKey))
+	}
 
 	// Guard against a narrow race: a message may have been queued between
 	// processInteractiveEvents observing an empty queue and returning here
@@ -3166,13 +3181,22 @@ func (e *Engine) handleWorkspaceCommand(p Platform, msg *Message, args []string)
 		e.reply(p, msg.ReplyCtx, e.i18n.Tf(successKey, normalizedPath))
 		return true
 	}
-	bindWorkspace := func(bindingKey, wsName string, successKey MsgKey) bool {
+	bindWorkspace := func(bindingKey, wsName string, create bool, successKey MsgKey) bool {
 		wsPath := filepath.Join(e.baseDir, wsName)
 
 		// Check if workspace directory exists
 		if _, err := os.Stat(wsPath); os.IsNotExist(err) {
-			e.reply(p, msg.ReplyCtx, e.i18n.Tf(MsgWsBindNotFound, wsName))
-			return false
+			if !create {
+				e.reply(p, msg.ReplyCtx, e.i18n.Tf(MsgWsBindNotFound, wsName, wsName))
+				return false
+			}
+			if err := os.MkdirAll(wsPath, 0o755); err != nil {
+				e.reply(p, msg.ReplyCtx, e.i18n.Tf(MsgWsBindCreateFailed, wsName, err))
+				return false
+			}
+			e.workspaceBindings.Bind(bindingKey, channelKey, resolveChannelName(), normalizeWorkspacePath(wsPath))
+			e.reply(p, msg.ReplyCtx, e.i18n.Tf(MsgWsBindCreated, wsName))
+			return true
 		}
 
 		e.workspaceBindings.Bind(bindingKey, channelKey, resolveChannelName(), normalizeWorkspacePath(wsPath))
@@ -3242,7 +3266,17 @@ func (e *Engine) handleWorkspaceCommand(p Platform, msg *Message, args []string)
 			e.reply(p, msg.ReplyCtx, e.i18n.T(MsgWsBindUsage))
 			return
 		}
-		bindWorkspace(projectKey, args[1], MsgWsBindSuccess)
+		create := false
+		wsName := args[1]
+		if args[1] == "-c" {
+			create = true
+			if len(args) < 3 {
+				e.reply(p, msg.ReplyCtx, e.i18n.T(MsgWsBindUsage))
+				return
+			}
+			wsName = args[2]
+		}
+		bindWorkspace(projectKey, wsName, create, MsgWsBindSuccess)
 
 	case "route":
 		if len(args) < 2 {
@@ -3277,7 +3311,17 @@ func (e *Engine) handleWorkspaceCommand(p Platform, msg *Message, args []string)
 				e.reply(p, msg.ReplyCtx, e.i18n.T(MsgWsSharedUsage))
 				return
 			}
-			bindWorkspace(sharedWorkspaceBindingsKey, args[2], MsgWsSharedBindSuccess)
+			sharedCreate := false
+			sharedWsName := args[2]
+			if args[2] == "-c" {
+				sharedCreate = true
+				if len(args) < 4 {
+					e.reply(p, msg.ReplyCtx, e.i18n.T(MsgWsSharedUsage))
+					return
+				}
+				sharedWsName = args[3]
+			}
+			bindWorkspace(sharedWorkspaceBindingsKey, sharedWsName, sharedCreate, MsgWsSharedBindSuccess)
 			return
 		case "route":
 			if len(args) < 3 {
@@ -9524,6 +9568,19 @@ func extractChannelID(sessionKey string) string {
 		return parts[1]
 	}
 	return ""
+}
+
+// buildChannelContextPrompt prepends recent channel messages to the user's
+// prompt so the agent has conversation context.
+func buildChannelContextPrompt(history []ChannelHistoryEntry, currentMessage string) string {
+	var sb strings.Builder
+	sb.WriteString("[Chat history since last reply (for context)]\n")
+	for _, h := range history {
+		fmt.Fprintf(&sb, "[%s %s] %s\n", h.Sender, h.Timestamp.Format("15:04:05"), h.Body)
+	}
+	sb.WriteString("\n[Current message]\n")
+	sb.WriteString(currentMessage)
+	return sb.String()
 }
 
 func extractUserID(sessionKey string) string {

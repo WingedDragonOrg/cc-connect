@@ -81,6 +81,7 @@ type Platform struct {
 	tokenCache     tokenCache
 	dedup          msgDedup
 	userNameCache  sync.Map // userID -> display name
+	historyStore   *core.ChannelHistoryStore // [channel-history]
 }
 
 // msgDedup tracks recently processed MsgIds to avoid WeChat Work retry duplicates.
@@ -170,6 +171,12 @@ func New(opts map[string]any) (core.Platform, error) {
 	allowFrom, _ := opts["allow_from"].(string)
 	core.CheckAllowFrom("wecom", allowFrom)
 
+	contextMessages, _ := opts["context_messages"].(float64)
+	var histStore *core.ChannelHistoryStore
+	if int(contextMessages) > 0 {
+		histStore = core.NewChannelHistoryStore(int(contextMessages), 0)
+	}
+
 	return &Platform{
 		corpID:         corpID,
 		corpSecret:     corpSecret,
@@ -181,6 +188,7 @@ func New(opts map[string]any) (core.Platform, error) {
 		callbackPath:   path,
 		enableMarkdown: enableMarkdown,
 		apiClient:      apiClient,
+		historyStore:   histStore,
 	}, nil
 }
 
@@ -339,6 +347,10 @@ func (p *Platform) handleMessage(w http.ResponseWriter, r *http.Request, msgSig,
 	switch msg.MsgType {
 	case "text":
 		text := stripWeComAtMentions(msg.Content, p.agentID)
+		// [channel-history] Record messages for channel history context.
+		if p.historyStore != nil && text != "" {
+			p.historyStore.Record(msg.FromUserName, p.resolveUserName(msg.FromUserName), text)
+		}
 		slog.Debug("wecom: message received", "user", msg.FromUserName, "text_len", len(text))
 		go p.handler(p, &core.Message{
 			SessionKey: sessionKey, Platform: "wecom",
@@ -861,4 +873,19 @@ func splitByBytes(s string, maxBytes int) []string {
 		s = s[end:]
 	}
 	return parts
+}
+
+// [channel-history] GetChannelHistory implements core.ChannelHistoryProvider.
+func (p *Platform) GetChannelHistory(channelID string) []core.ChannelHistoryEntry {
+	if p.historyStore == nil {
+		return nil
+	}
+	return p.historyStore.Get(channelID)
+}
+
+// [channel-history] ClearChannelHistory implements core.ChannelHistoryProvider.
+func (p *Platform) ClearChannelHistory(channelID string) {
+	if p.historyStore != nil {
+		p.historyStore.Clear(channelID)
+	}
 }

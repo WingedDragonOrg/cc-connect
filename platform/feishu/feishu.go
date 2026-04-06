@@ -119,7 +119,8 @@ type Platform struct {
 	respondToAtEveryoneAndHere bool
 	shareSessionInChannel bool
 	threadIsolation       bool
-	mentionPatterns []*regexp.Regexp
+	mentionPatterns  []*regexp.Regexp
+	historyStore     *core.ChannelHistoryStore // [channel-history]
 	// noReplyToTrigger: when true, send via Create instead of Im.Message.Reply (no quote to the user's message).
 	noReplyToTrigger bool
 	client           *lark.Client
@@ -188,6 +189,8 @@ func newPlatform(name, domain string, opts map[string]any) (core.Platform, error
 		noReplyToTrigger = true
 	}
 
+	contextMessages, _ := opts["context_messages"].(float64)
+
 	mentionPatterns, err := core.ParseMentionPatterns(name, opts)
 	if err != nil {
 		return nil, err
@@ -225,6 +228,11 @@ func newPlatform(name, domain string, opts map[string]any) (core.Platform, error
 		clientOpts = append(clientOpts, lark.WithOpenBaseUrl(domain))
 	}
 
+	var histStore *core.ChannelHistoryStore
+	if int(contextMessages) > 0 {
+		histStore = core.NewChannelHistoryStore(int(contextMessages), 0)
+	}
+
 	base := &Platform{
 		platformName:          name,
 		domain:                domain,
@@ -239,6 +247,7 @@ func newPlatform(name, domain string, opts map[string]any) (core.Platform, error
 		shareSessionInChannel: shareSessionInChannel,
 		threadIsolation:       threadIsolation,
 		mentionPatterns:       mentionPatterns,
+		historyStore:          histStore,
 		noReplyToTrigger:      noReplyToTrigger,
 		client:                lark.NewClient(appID, appSecret, clientOpts...),
 		replayClient:          newFeishuReplayClient(appID, appSecret, domain),
@@ -684,6 +693,14 @@ func (p *Platform) onMessage(event *larkim.P2MessageReceiveV1) error {
 		"group_reply_all", p.groupReplyAll,
 		"thread_isolation", p.threadIsolation,
 	)
+
+	// [channel-history] Record group messages for channel context (before mention filtering).
+	if chatType == "group" && p.historyStore != nil && msgType == "text" && msg.Content != nil {
+		var tb struct{ Text string }
+		if json.Unmarshal([]byte(*msg.Content), &tb) == nil && tb.Text != "" {
+			p.historyStore.Record(chatID, userName, tb.Text)
+		}
+	}
 
 	if chatType == "group" && !p.groupReplyAll && p.botOpenID != "" {
 		contentForMatch := ""
@@ -2381,6 +2398,21 @@ func (p *Platform) Stop() error {
 		}
 	}
 	return nil
+}
+
+// [channel-history] GetChannelHistory implements core.ChannelHistoryProvider.
+func (p *Platform) GetChannelHistory(channelID string) []core.ChannelHistoryEntry {
+	if p.historyStore == nil {
+		return nil
+	}
+	return p.historyStore.Get(channelID)
+}
+
+// [channel-history] ClearChannelHistory implements core.ChannelHistoryProvider.
+func (p *Platform) ClearChannelHistory(channelID string) {
+	if p.historyStore != nil {
+		p.historyStore.Clear(channelID)
+	}
 }
 
 // DeletePreviewMessage removes a preview message so the caller can send a
