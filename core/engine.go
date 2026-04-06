@@ -3182,7 +3182,10 @@ func (e *Engine) handleWorkspaceCommand(p Platform, msg *Message, args []string)
 		return true
 	}
 	bindWorkspace := func(bindingKey, wsName string, create bool, successKey MsgKey) bool {
-		wsPath := filepath.Join(e.baseDir, wsName)
+		wsPath := wsName
+		if !filepath.IsAbs(wsName) {
+			wsPath = filepath.Join(e.baseDir, wsName)
+		}
 
 		// Check if workspace directory exists
 		if _, err := os.Stat(wsPath); os.IsNotExist(err) {
