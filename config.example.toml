@@ -113,6 +113,27 @@ level = "info" # debug, info, warn, error
 # max_per_second = 5
 
 # =============================================================================
+# Global Providers / 全局 Providers
+# =============================================================================
+# Shared across all projects. Projects can override by defining a provider
+# with the same name in [[projects.agent.providers]].
+# 所有项目共享。项目可通过在 [[projects.agent.providers]] 中定义同名 provider 覆盖。
+
+# [[providers]]
+# name = "anthropic"
+# api_key = "sk-ant-xxx"
+
+# [[providers]]
+# name = "relay"
+# api_key = "sk-xxx"
+# base_url = "https://api.relay-service.com"
+# model = "claude-sonnet-4-20250514"
+
+# [[providers]]
+# name = "bedrock"
+# env = { CLAUDE_CODE_USE_BEDROCK = "1", AWS_PROFILE = "bedrock" }
+
+# =============================================================================
 # Relay Settings / Relay 设置
 # =============================================================================
 # Bot-to-bot relay timeout. Controls how long cc-connect waits for the target

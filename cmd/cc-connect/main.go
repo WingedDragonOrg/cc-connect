@@ -195,9 +195,10 @@ func main() {
 		}
 
 		// Wire providers if the agent supports it
-		if ps, ok := agent.(core.ProviderSwitcher); ok && len(proj.Agent.Providers) > 0 {
-			providers := make([]core.ProviderConfig, len(proj.Agent.Providers))
-			for i, p := range proj.Agent.Providers {
+		mergedProviders := config.MergeProviders(cfg.Providers, proj.Agent.Providers)
+		if ps, ok := agent.(core.ProviderSwitcher); ok && len(mergedProviders) > 0 {
+			providers := make([]core.ProviderConfig, len(mergedProviders))
+			for i, p := range mergedProviders {
 				providers[i] = core.ProviderConfig{
 					Name:     p.Name,
 					APIKey:   p.APIKey,
@@ -1306,10 +1307,11 @@ func reloadConfig(configPath, projName string, engine *core.Engine) (*core.Confi
 	// Reload attachment send-back switch
 	engine.SetAttachmentSendEnabled(cfg.AttachmentSend != "off")
 
-	// Reload providers
+	// Reload providers (merge global + project-level)
+	reloadMerged := config.MergeProviders(cfg.Providers, proj.Agent.Providers)
 	if ps, ok := engine.GetAgent().(core.ProviderSwitcher); ok {
-		providers := make([]core.ProviderConfig, len(proj.Agent.Providers))
-		for i, p := range proj.Agent.Providers {
+		providers := make([]core.ProviderConfig, len(reloadMerged))
+		for i, p := range reloadMerged {
 			providers[i] = core.ProviderConfig{
 				Name: p.Name, APIKey: p.APIKey, BaseURL: p.BaseURL,
 				Model: p.Model, Models: convertProviderModels(p.Models), Thinking: p.Thinking, Env: p.Env,

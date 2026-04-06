@@ -39,6 +39,7 @@ type Config struct {
 	Bridge            BridgeConfig            `toml:"bridge"`
 	Management        ManagementConfig        `toml:"management"`
 	IdleTimeoutMins   *int                    `toml:"idle_timeout_mins,omitempty"` // max minutes between agent events; 0 = no timeout; default 120
+	Providers         []ProviderConfig        `toml:"providers"`                   // global providers shared across all projects
 }
 
 // CronConfig controls cron job behavior.
@@ -837,7 +838,32 @@ func SaveTTSMode(mode string) error {
 	return saveConfig(cfg)
 }
 
+// MergeProviders merges global providers with project-level providers.
+// Project providers override global ones with the same name (full replacement, not field-level merge).
+// The result is: global providers (excluding those overridden by project) + all project providers.
+func MergeProviders(global, project []ProviderConfig) []ProviderConfig {
+	if len(global) == 0 {
+		return project
+	}
+	if len(project) == 0 {
+		return global
+	}
+	projNames := make(map[string]bool, len(project))
+	for _, p := range project {
+		projNames[p.Name] = true
+	}
+	merged := make([]ProviderConfig, 0, len(global)+len(project))
+	for _, g := range global {
+		if !projNames[g.Name] {
+			merged = append(merged, g)
+		}
+	}
+	merged = append(merged, project...)
+	return merged
+}
+
 // GetProjectProviders returns providers for a given project.
+// Global providers are merged with project-level providers (project overrides by name).
 func GetProjectProviders(projectName string) ([]ProviderConfig, string, error) {
 	if ConfigPath == "" {
 		return nil, "", fmt.Errorf("config path not set")
@@ -853,7 +879,7 @@ func GetProjectProviders(projectName string) ([]ProviderConfig, string, error) {
 	for _, p := range cfg.Projects {
 		if p.Name == projectName {
 			active, _ := p.Agent.Options["provider"].(string)
-			return p.Agent.Providers, active, nil
+			return MergeProviders(cfg.Providers, p.Agent.Providers), active, nil
 		}
 	}
 	return nil, "", fmt.Errorf("project %q not found", projectName)

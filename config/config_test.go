@@ -1650,3 +1650,78 @@ func TestFormatConfigFile(t *testing.T) {
 		}
 	})
 }
+
+func TestMergeProviders(t *testing.T) {
+	global := []ProviderConfig{
+		{Name: "anthropic", APIKey: "global-key"},
+		{Name: "relay", APIKey: "global-relay-key", BaseURL: "https://global.example.com"},
+	}
+	project := []ProviderConfig{
+		{Name: "relay", APIKey: "project-relay-key", BaseURL: "https://project.example.com"},
+		{Name: "bedrock", Env: map[string]string{"AWS_PROFILE": "prod"}},
+	}
+
+	t.Run("only global", func(t *testing.T) {
+		result := MergeProviders(global, nil)
+		if len(result) != 2 {
+			t.Fatalf("expected 2 providers, got %d", len(result))
+		}
+		if result[0].Name != "anthropic" || result[1].Name != "relay" {
+			t.Errorf("unexpected providers: %v", result)
+		}
+	})
+
+	t.Run("only project", func(t *testing.T) {
+		result := MergeProviders(nil, project)
+		if len(result) != 2 {
+			t.Fatalf("expected 2 providers, got %d", len(result))
+		}
+		if result[0].Name != "relay" || result[1].Name != "bedrock" {
+			t.Errorf("unexpected providers: %v", result)
+		}
+	})
+
+	t.Run("both empty", func(t *testing.T) {
+		result := MergeProviders(nil, nil)
+		if len(result) != 0 {
+			t.Fatalf("expected 0 providers, got %d", len(result))
+		}
+	})
+
+	t.Run("merge with no overlap", func(t *testing.T) {
+		noOverlap := []ProviderConfig{{Name: "bedrock", Env: map[string]string{"AWS_PROFILE": "prod"}}}
+		result := MergeProviders(global, noOverlap)
+		if len(result) != 3 {
+			t.Fatalf("expected 3 providers, got %d", len(result))
+		}
+		// global providers first, then project
+		if result[0].Name != "anthropic" || result[1].Name != "relay" || result[2].Name != "bedrock" {
+			t.Errorf("unexpected order: %v", result)
+		}
+	})
+
+	t.Run("project overrides global by name", func(t *testing.T) {
+		result := MergeProviders(global, project)
+		// anthropic (from global, not overridden) + relay (from project, overrides global) + bedrock (from project)
+		if len(result) != 3 {
+			t.Fatalf("expected 3 providers, got %d", len(result))
+		}
+		// Find relay provider — should be the project version
+		var relay *ProviderConfig
+		for i := range result {
+			if result[i].Name == "relay" {
+				relay = &result[i]
+				break
+			}
+		}
+		if relay == nil {
+			t.Fatal("relay provider not found")
+		}
+		if relay.APIKey != "project-relay-key" {
+			t.Errorf("expected project relay key, got %q", relay.APIKey)
+		}
+		if relay.BaseURL != "https://project.example.com" {
+			t.Errorf("expected project base URL, got %q", relay.BaseURL)
+		}
+	})
+}
