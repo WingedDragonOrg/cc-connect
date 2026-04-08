@@ -137,11 +137,7 @@ func New(opts map[string]any) (core.Platform, error) {
 		slog.Info("weixin: using proxy", "proxy", u.Redacted())
 	}
 
-	contextMessages, _ := opts["context_messages"].(float64)
-	var histStore *core.ChannelHistoryStore
-	if int(contextMessages) > 0 {
-		histStore = core.NewChannelHistoryStore(int(contextMessages), 0)
-	}
+	histStore := core.NewChannelHistoryStoreFromOpts(opts)
 
 	p := &Platform{
 		token:        token,
@@ -428,7 +424,7 @@ func (p *Platform) dispatchInbound(ctx context.Context, m *weixinMessage, h core
 
 	// [channel-history] Record message for channel history context.
 	if p.historyStore != nil && strings.TrimSpace(body) != "" {
-		p.historyStore.Record(from, shortWeixinUser(from), body)
+		p.historyStore.Record(from, from, shortWeixinUser(from), body)
 	}
 
 	rc := &replyContext{peerUserID: from, contextToken: strings.TrimSpace(m.ContextToken)}

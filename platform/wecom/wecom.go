@@ -171,11 +171,7 @@ func New(opts map[string]any) (core.Platform, error) {
 	allowFrom, _ := opts["allow_from"].(string)
 	core.CheckAllowFrom("wecom", allowFrom)
 
-	contextMessages, _ := opts["context_messages"].(float64)
-	var histStore *core.ChannelHistoryStore
-	if int(contextMessages) > 0 {
-		histStore = core.NewChannelHistoryStore(int(contextMessages), 0)
-	}
+	histStore := core.NewChannelHistoryStoreFromOpts(opts)
 
 	return &Platform{
 		corpID:         corpID,
@@ -349,7 +345,7 @@ func (p *Platform) handleMessage(w http.ResponseWriter, r *http.Request, msgSig,
 		text := stripWeComAtMentions(msg.Content, p.agentID)
 		// [channel-history] Record messages for channel history context.
 		if p.historyStore != nil && text != "" {
-			p.historyStore.Record(msg.FromUserName, p.resolveUserName(msg.FromUserName), text)
+			p.historyStore.Record(msg.FromUserName, msg.FromUserName, p.resolveUserName(msg.FromUserName), text)
 		}
 		slog.Debug("wecom: message received", "user", msg.FromUserName, "text_len", len(text))
 		go p.handler(p, &core.Message{

@@ -10,6 +10,21 @@ const (
 	defaultMaxHistoryChannels  = 1000
 )
 
+// NewChannelHistoryStoreFromOpts creates a ChannelHistoryStore from platform options.
+// When "context_messages" is absent, it defaults to defaultChannelHistoryLimit (20).
+// When explicitly set to 0, channel history is disabled (returns nil).
+func NewChannelHistoryStoreFromOpts(opts map[string]any) *ChannelHistoryStore {
+	limit := defaultChannelHistoryLimit
+	if v, ok := opts["context_messages"]; ok {
+		if n, _ := v.(float64); n <= 0 {
+			return nil // explicitly disabled
+		} else {
+			limit = int(n)
+		}
+	}
+	return NewChannelHistoryStore(limit, 0)
+}
+
 // ChannelHistoryStore is a thread-safe, per-channel message history store
 // with LRU eviction. Platforms use it to record recent channel messages so
 // the engine can inject them as context when sending a prompt to the agent.
@@ -39,7 +54,7 @@ func NewChannelHistoryStore(limit, maxKeys int) *ChannelHistoryStore {
 }
 
 // Record appends a message to the channel's history.
-func (s *ChannelHistoryStore) Record(channelID, sender, body string) {
+func (s *ChannelHistoryStore) Record(channelID, senderID, senderName, body string) {
 	if channelID == "" || body == "" {
 		return
 	}
@@ -47,9 +62,10 @@ func (s *ChannelHistoryStore) Record(channelID, sender, body string) {
 	defer s.mu.Unlock()
 
 	entry := ChannelHistoryEntry{
-		Sender:    sender,
-		Body:      body,
-		Timestamp: time.Now(),
+		SenderID:   senderID,
+		SenderName: senderName,
+		Body:       body,
+		Timestamp:  time.Now(),
 	}
 
 	history := s.data[channelID]

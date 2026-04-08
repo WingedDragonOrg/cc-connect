@@ -268,9 +268,10 @@ type HistoryProvider interface {
 // [channel-history] ChannelHistoryEntry represents a single message from the platform channel,
 // used to provide conversation context to the agent.
 type ChannelHistoryEntry struct {
-	Sender    string
-	Body      string
-	Timestamp time.Time
+	SenderID   string
+	SenderName string
+	Body       string
+	Timestamp  time.Time
 }
 
 // [channel-history] ChannelHistoryProvider is an optional interface for platforms that track

@@ -50,15 +50,11 @@ func New(opts map[string]any) (core.Platform, error) {
 	allowFrom, _ := opts["allow_from"].(string)
 	core.CheckAllowFrom("slack", allowFrom)
 	shareSessionInChannel, _ := opts["share_session_in_channel"].(bool)
-	contextMessages, _ := opts["context_messages"].(float64)
 	if botToken == "" || appToken == "" {
 		return nil, fmt.Errorf("slack: bot_token and app_token are required")
 	}
 
-	var histStore *core.ChannelHistoryStore
-	if int(contextMessages) > 0 {
-		histStore = core.NewChannelHistoryStore(int(contextMessages), 0)
-	}
+	histStore := core.NewChannelHistoryStoreFromOpts(opts)
 
 	return &Platform{
 		botToken:              botToken,
@@ -161,7 +157,7 @@ func (p *Platform) handleEvent(evt socketmode.Event) {
 				}
 				// [channel-history] Record @bot mentions for channel history context.
 				if p.historyStore != nil && content != "" {
-					p.historyStore.Record(ev.Channel, p.resolveUserName(ev.User), content)
+					p.historyStore.Record(ev.Channel, ev.User, p.resolveUserName(ev.User), content)
 				}
 
 				msg := &core.Message{
@@ -216,7 +212,7 @@ func (p *Platform) handleEvent(evt socketmode.Event) {
 
 				// [channel-history] Record messages for channel history context.
 				if p.historyStore != nil && ev.Text != "" {
-					p.historyStore.Record(ev.Channel, p.resolveUserName(ev.User), ev.Text)
+					p.historyStore.Record(ev.Channel, ev.User, p.resolveUserName(ev.User), ev.Text)
 				}
 
 				msg := &core.Message{
