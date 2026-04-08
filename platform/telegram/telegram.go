@@ -169,11 +169,7 @@ func New(opts map[string]any) (core.Platform, error) {
 		return nil, err
 	}
 
-	contextMessages, _ := opts["context_messages"].(float64)
-	var histStore *core.ChannelHistoryStore
-	if int(contextMessages) > 0 {
-		histStore = core.NewChannelHistoryStore(int(contextMessages), 0)
-	}
+	histStore := core.NewChannelHistoryStoreFromOpts(opts)
 
 	return &Platform{token: token, allowFrom: allowFrom, groupReplyAll: groupReplyAll, shareSessionInChannel: shareSessionInChannel, enableReactions: enableReactions, mentionPatterns: mentionPatterns, httpClient: httpClient, historyStore: histStore}, nil
 }
@@ -367,7 +363,7 @@ func (p *Platform) handleMessage(ctx context.Context, msg *models.Message) {
 
 	// [channel-history] Record all group messages for channel context (before mention filtering).
 	if isGroup && p.historyStore != nil && msg.Text != "" {
-		p.historyStore.Record(channelKey, userName, msg.Text)
+		p.historyStore.Record(channelKey, userID, userName, msg.Text)
 	}
 
 	if isGroup && !p.groupReplyAll {

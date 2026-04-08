@@ -122,11 +122,7 @@ func New(opts map[string]any) (core.Platform, error) {
 		intents = int(v)
 	}
 
-	contextMessages, _ := opts["context_messages"].(float64)
-	var histStore *core.ChannelHistoryStore
-	if int(contextMessages) > 0 {
-		histStore = core.NewChannelHistoryStore(int(contextMessages), 0)
-	}
+	histStore := core.NewChannelHistoryStoreFromOpts(opts)
 
 	core.CheckAllowFrom("qqbot", allowFrom)
 	return &Platform{
@@ -905,7 +901,7 @@ func (p *Platform) handleGroupMessage(data json.RawMessage) {
 
 	// [channel-history] Record group messages for channel history context.
 	if p.historyStore != nil && content != "" {
-		p.historyStore.Record(d.GroupOpenID, d.Author.MemberOpenID, content)
+		p.historyStore.Record(d.GroupOpenID, d.Author.MemberOpenID, "", content)
 	}
 
 	slog.Debug("qqbot: group message received", "group", d.GroupOpenID, "user", d.Author.MemberOpenID, "len", len(content), "images", len(images))

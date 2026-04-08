@@ -189,8 +189,6 @@ func newPlatform(name, domain string, opts map[string]any) (core.Platform, error
 		noReplyToTrigger = true
 	}
 
-	contextMessages, _ := opts["context_messages"].(float64)
-
 	mentionPatterns, err := core.ParseMentionPatterns(name, opts)
 	if err != nil {
 		return nil, err
@@ -228,10 +226,7 @@ func newPlatform(name, domain string, opts map[string]any) (core.Platform, error
 		clientOpts = append(clientOpts, lark.WithOpenBaseUrl(domain))
 	}
 
-	var histStore *core.ChannelHistoryStore
-	if int(contextMessages) > 0 {
-		histStore = core.NewChannelHistoryStore(int(contextMessages), 0)
-	}
+	histStore := core.NewChannelHistoryStoreFromOpts(opts)
 
 	base := &Platform{
 		platformName:          name,
@@ -698,7 +693,7 @@ func (p *Platform) onMessage(event *larkim.P2MessageReceiveV1) error {
 	if chatType == "group" && p.historyStore != nil && msgType == "text" && msg.Content != nil {
 		var tb struct{ Text string }
 		if json.Unmarshal([]byte(*msg.Content), &tb) == nil && tb.Text != "" {
-			p.historyStore.Record(chatID, userName, tb.Text)
+			p.historyStore.Record(chatID, userID, userName, tb.Text)
 		}
 	}
 

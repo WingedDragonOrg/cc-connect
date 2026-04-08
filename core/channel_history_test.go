@@ -9,17 +9,17 @@ import (
 func TestChannelHistoryStore_RecordAndGet(t *testing.T) {
 	s := NewChannelHistoryStore(3, 100)
 
-	s.Record("ch1", "alice", "hello")
-	s.Record("ch1", "bob", "world")
+	s.Record("ch1", "u1", "alice", "hello")
+	s.Record("ch1", "u2", "bob", "world")
 
 	got := s.Get("ch1")
 	if len(got) != 2 {
 		t.Fatalf("expected 2 entries, got %d", len(got))
 	}
-	if got[0].Sender != "alice" || got[0].Body != "hello" {
+	if got[0].SenderID != "u1" || got[0].SenderName != "alice" || got[0].Body != "hello" {
 		t.Errorf("entry[0] = %+v", got[0])
 	}
-	if got[1].Sender != "bob" || got[1].Body != "world" {
+	if got[1].SenderID != "u2" || got[1].SenderName != "bob" || got[1].Body != "world" {
 		t.Errorf("entry[1] = %+v", got[1])
 	}
 }
@@ -27,9 +27,9 @@ func TestChannelHistoryStore_RecordAndGet(t *testing.T) {
 func TestChannelHistoryStore_Limit(t *testing.T) {
 	s := NewChannelHistoryStore(2, 100)
 
-	s.Record("ch1", "a", "1")
-	s.Record("ch1", "b", "2")
-	s.Record("ch1", "c", "3")
+	s.Record("ch1", "u1", "a", "1")
+	s.Record("ch1", "u2", "b", "2")
+	s.Record("ch1", "u3", "c", "3")
 
 	got := s.Get("ch1")
 	if len(got) != 2 {
@@ -44,7 +44,7 @@ func TestChannelHistoryStore_Limit(t *testing.T) {
 func TestChannelHistoryStore_Clear(t *testing.T) {
 	s := NewChannelHistoryStore(5, 100)
 
-	s.Record("ch1", "a", "msg")
+	s.Record("ch1", "u1", "a", "msg")
 	s.Clear("ch1")
 
 	got := s.Get("ch1")
@@ -56,11 +56,11 @@ func TestChannelHistoryStore_Clear(t *testing.T) {
 func TestChannelHistoryStore_LRUEviction(t *testing.T) {
 	s := NewChannelHistoryStore(5, 3)
 
-	s.Record("ch1", "a", "1")
-	s.Record("ch2", "b", "2")
-	s.Record("ch3", "c", "3")
+	s.Record("ch1", "u1", "a", "1")
+	s.Record("ch2", "u2", "b", "2")
+	s.Record("ch3", "u3", "c", "3")
 	// ch1 is the oldest; adding ch4 should evict ch1.
-	s.Record("ch4", "d", "4")
+	s.Record("ch4", "u4", "d", "4")
 
 	if got := s.Get("ch1"); len(got) != 0 {
 		t.Errorf("ch1 should be evicted, got %d entries", len(got))
@@ -73,13 +73,13 @@ func TestChannelHistoryStore_LRUEviction(t *testing.T) {
 func TestChannelHistoryStore_LRURefresh(t *testing.T) {
 	s := NewChannelHistoryStore(5, 3)
 
-	s.Record("ch1", "a", "1")
-	s.Record("ch2", "b", "2")
-	s.Record("ch3", "c", "3")
+	s.Record("ch1", "u1", "a", "1")
+	s.Record("ch2", "u2", "b", "2")
+	s.Record("ch3", "u3", "c", "3")
 	// Touch ch1 to refresh it.
-	s.Record("ch1", "a", "1b")
+	s.Record("ch1", "u1", "a", "1b")
 	// Now ch2 is the oldest; adding ch4 should evict ch2.
-	s.Record("ch4", "d", "4")
+	s.Record("ch4", "u4", "d", "4")
 
 	if got := s.Get("ch2"); len(got) != 0 {
 		t.Errorf("ch2 should be evicted, got %d entries", len(got))
@@ -91,7 +91,7 @@ func TestChannelHistoryStore_LRURefresh(t *testing.T) {
 
 func TestChannelHistoryStore_GetReturnsCopy(t *testing.T) {
 	s := NewChannelHistoryStore(5, 100)
-	s.Record("ch1", "a", "msg")
+	s.Record("ch1", "u1", "a", "msg")
 
 	got := s.Get("ch1")
 	got[0].Body = "mutated"
@@ -105,15 +105,15 @@ func TestChannelHistoryStore_GetReturnsCopy(t *testing.T) {
 func TestChannelHistoryStore_EmptyInputs(t *testing.T) {
 	s := NewChannelHistoryStore(5, 100)
 
-	s.Record("", "a", "msg")   // empty channel, should be ignored
-	s.Record("ch1", "a", "")   // empty body, should be ignored
-	s.Record("ch1", "", "msg") // empty sender is OK
+	s.Record("", "u1", "a", "msg")    // empty channel, should be ignored
+	s.Record("ch1", "u1", "a", "")    // empty body, should be ignored
+	s.Record("ch1", "", "", "msg")     // empty sender is OK
 
 	got := s.Get("ch1")
 	if len(got) != 1 {
 		t.Fatalf("expected 1 entry, got %d", len(got))
 	}
-	if got[0].Sender != "" || got[0].Body != "msg" {
+	if got[0].SenderID != "" || got[0].Body != "msg" {
 		t.Errorf("unexpected entry: %+v", got[0])
 	}
 }
@@ -134,7 +134,7 @@ func TestChannelHistoryStore_ConcurrentAccess(t *testing.T) {
 		go func(i int) {
 			defer wg.Done()
 			ch := fmt.Sprintf("ch%d", i%5)
-			s.Record(ch, "user", fmt.Sprintf("msg%d", i))
+			s.Record(ch, fmt.Sprintf("u%d", i), "user", fmt.Sprintf("msg%d", i))
 			s.Get(ch)
 			if i%10 == 0 {
 				s.Clear(ch)
@@ -142,6 +142,38 @@ func TestChannelHistoryStore_ConcurrentAccess(t *testing.T) {
 		}(i)
 	}
 	wg.Wait()
+}
+
+func TestNewChannelHistoryStoreFromOpts(t *testing.T) {
+	// No key → default limit 20
+	s1 := NewChannelHistoryStoreFromOpts(map[string]any{})
+	if s1 == nil {
+		t.Fatal("expected non-nil store when context_messages is absent")
+	}
+	if s1.limit != defaultChannelHistoryLimit {
+		t.Errorf("expected default limit %d, got %d", defaultChannelHistoryLimit, s1.limit)
+	}
+
+	// Explicit 0 → disabled (nil)
+	s2 := NewChannelHistoryStoreFromOpts(map[string]any{"context_messages": float64(0)})
+	if s2 != nil {
+		t.Error("expected nil store when context_messages is explicitly 0")
+	}
+
+	// Custom value
+	s3 := NewChannelHistoryStoreFromOpts(map[string]any{"context_messages": float64(50)})
+	if s3 == nil {
+		t.Fatal("expected non-nil store for context_messages=50")
+	}
+	if s3.limit != 50 {
+		t.Errorf("expected limit 50, got %d", s3.limit)
+	}
+
+	// Negative → disabled
+	s4 := NewChannelHistoryStoreFromOpts(map[string]any{"context_messages": float64(-1)})
+	if s4 != nil {
+		t.Error("expected nil store when context_messages is negative")
+	}
 }
 
 func TestNewChannelHistoryStore_Defaults(t *testing.T) {

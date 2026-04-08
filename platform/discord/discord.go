@@ -81,8 +81,6 @@ func New(opts map[string]any) (core.Platform, error) {
 		return nil, err
 	}
 
-	contextMessages, _ := opts["context_messages"].(float64)
-
 	var proxyU *url.URL
 	if proxyStr, _ := opts["proxy"].(string); proxyStr != "" {
 		u, err := url.Parse(proxyStr)
@@ -96,10 +94,7 @@ func New(opts map[string]any) (core.Platform, error) {
 		proxyU = u
 	}
 
-	var histStore *core.ChannelHistoryStore
-	if int(contextMessages) > 0 {
-		histStore = core.NewChannelHistoryStore(int(contextMessages), 0)
-	}
+	histStore := core.NewChannelHistoryStoreFromOpts(opts)
 
 	return &Platform{
 		token:                      token,
@@ -479,7 +474,7 @@ func (p *Platform) Start(handler core.MessageHandler) error {
 
 		// [channel-history] Record all guild messages for channel context (before mention filtering).
 		if m.GuildID != "" && p.historyStore != nil && m.Content != "" {
-			p.historyStore.Record(m.ChannelID, m.Author.Username, m.Content)
+			p.historyStore.Record(m.ChannelID, m.Author.ID, m.Author.Username, m.Content)
 		}
 
 		// In guild channels, only respond when the bot is @mentioned (unless group_reply_all).

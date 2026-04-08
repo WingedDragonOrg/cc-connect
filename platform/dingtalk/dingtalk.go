@@ -82,11 +82,7 @@ func New(opts map[string]any) (core.Platform, error) {
 	}
 	// agent_id can be 0 for testing, but will fail in production
 
-	contextMessages, _ := opts["context_messages"].(float64)
-	var histStore *core.ChannelHistoryStore
-	if int(contextMessages) > 0 {
-		histStore = core.NewChannelHistoryStore(int(contextMessages), 0)
-	}
+	histStore := core.NewChannelHistoryStoreFromOpts(opts)
 
 	return &Platform{
 		clientID:              clientID,
@@ -183,7 +179,7 @@ func (p *Platform) onMessage(data *chatbot.BotCallbackDataModel) {
 
 	// [channel-history] Record message history for group conversations (ConversationType "2" = group)
 	if data.ConversationType == "2" && p.historyStore != nil && data.Text.Content != "" {
-		p.historyStore.Record(data.ConversationId, data.SenderNick, data.Text.Content)
+		p.historyStore.Record(data.ConversationId, data.SenderStaffId, data.SenderNick, data.Text.Content)
 	}
 
 	// Handle text messages (default)

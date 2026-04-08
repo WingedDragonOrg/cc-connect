@@ -51,11 +51,7 @@ func New(opts map[string]any) (core.Platform, error) {
 	allowFrom, _ := opts["allow_from"].(string)
 	shareSessionInChannel, _ := opts["share_session_in_channel"].(bool)
 
-	contextMessages, _ := opts["context_messages"].(float64)
-	var histStore *core.ChannelHistoryStore
-	if int(contextMessages) > 0 {
-		histStore = core.NewChannelHistoryStore(int(contextMessages), 0)
-	}
+	histStore := core.NewChannelHistoryStoreFromOpts(opts)
 
 	core.CheckAllowFrom("qq", allowFrom)
 	return &Platform{
@@ -247,7 +243,7 @@ func (p *Platform) handleMessage(payload map[string]any) {
 
 	// [channel-history] Record group messages for channel history context.
 	if msgType == "group" && p.historyStore != nil && text != "" {
-		p.historyStore.Record(strconv.FormatInt(groupID, 10), userName, text)
+		p.historyStore.Record(strconv.FormatInt(groupID, 10), strconv.FormatInt(userID, 10), userName, text)
 	}
 
 	slog.Debug("qq: message received", "type", msgType, "user", userID, "text_len", len(text))

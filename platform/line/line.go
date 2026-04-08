@@ -59,12 +59,7 @@ func New(opts map[string]any) (core.Platform, error) {
 		path = "/callback"
 	}
 
-	contextMessages, _ := opts["context_messages"].(float64)
-
-	var histStore *core.ChannelHistoryStore
-	if int(contextMessages) > 0 {
-		histStore = core.NewChannelHistoryStore(int(contextMessages), 0)
-	}
+	histStore := core.NewChannelHistoryStoreFromOpts(opts)
 
 	core.CheckAllowFrom("line", allowFrom)
 	return &Platform{
@@ -146,7 +141,7 @@ func (p *Platform) webhookHandler(w http.ResponseWriter, r *http.Request) {
 		// [channel-history] Record group/room messages for channel history context.
 		if (targetType == "group" || targetType == "room") && p.historyStore != nil {
 			if tm, ok := e.Message.(webhook.TextMessageContent); ok && tm.Text != "" {
-				p.historyStore.Record(targetID, p.resolveUserName(userID), tm.Text)
+				p.historyStore.Record(targetID, userID, p.resolveUserName(userID), tm.Text)
 			}
 		}
 
